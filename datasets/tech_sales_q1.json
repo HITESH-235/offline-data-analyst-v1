@@ -1,0 +1,8 @@
+[
+  {"region": "North America", "product": "Cloud Analytics", "quarter": "Q1", "revenue_usd": 125000, "units_sold": 50, "customer_satisfaction": 4.8},
+  {"region": "North America", "product": "On-Premise AI Server", "quarter": "Q1", "revenue_usd": 340000, "units_sold": 12, "customer_satisfaction": 4.5},
+  {"region": "Europe", "product": "Cloud Analytics", "quarter": "Q1", "revenue_usd": 98000, "units_sold": 41, "customer_satisfaction": 4.6},
+  {"region": "Europe", "product": "Data Security Suite", "quarter": "Q1", "revenue_usd": 210000, "units_sold": 30, "customer_satisfaction": 4.9},
+  {"region": "Asia-Pacific", "product": "Cloud Analytics", "quarter": "Q1", "revenue_usd": 156000, "units_sold": 68, "customer_satisfaction": 4.7},
+  {"region": "Asia-Pacific", "product": "Data Security Suite", "quarter": "Q1", "revenue_usd": 185000, "units_sold": 25, "customer_satisfaction": 4.4}
+]

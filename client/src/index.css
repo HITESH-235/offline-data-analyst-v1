@@ -1,0 +1,402 @@
+/* Modern CSS variables for dark-mode glassmorphic aesthetics */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --font-sans: 'Inter', sans-serif;
+  --font-title: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Premium HSL Color Palette */
+  --bg-main: #0c0d10;
+  --bg-card: rgba(22, 24, 30, 0.65);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(99, 102, 241, 0.4);
+  
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+
+  --accent-color: #6366f1; /* Indigo */
+  --accent-hover: #4f46e5;
+  --accent-glow: rgba(99, 102, 241, 0.25);
+  
+  --success-color: #10b981;
+  --danger-color: #ef4444;
+  --warning-color: #f59e0b;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  line-height: 1.5;
+}
+
+/* Glassmorphism panel styles */
+.glass-panel {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-panel:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* 3-Panel Main Layout grid */
+.app-container {
+  display: grid;
+  grid-template-columns: 280px 1fr 400px;
+  grid-template-rows: 64px 1fr;
+  height: 100vh;
+  width: 100vw;
+  background: radial-gradient(circle at 50% 50%, #1a1c24 0%, #0c0d10 100%);
+}
+
+.header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(12, 13, 16, 0.7);
+  backdrop-filter: blur(8px);
+}
+
+.header-logo {
+  font-family: var(--font-title);
+  font-weight: 700;
+  font-size: 20px;
+  background: linear-gradient(135deg, #a5b4fc 0%, #6366f1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Sidebar (Left panel) */
+.left-panel {
+  border-right: 1px solid var(--border-color);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: calc(100vh - 64px);
+  overflow-y: auto;
+  width: 100%;
+}
+
+/* Sidebar Resizer Handle */
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background-color 0.2s;
+}
+
+.sidebar-resizer.left {
+  right: -3px;
+}
+
+.sidebar-resizer.right {
+  left: -3px;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer.active {
+  background-color: var(--accent-color);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.resizing {
+  user-select: none;
+  cursor: col-resize !important;
+}
+
+.icon-only-btn {
+  color: var(--text-secondary);
+  transition: color 0.2s, background-color 0.2s;
+}
+
+.icon-only-btn:hover {
+  color: var(--accent-color);
+  background: rgba(99, 102, 241, 0.15) !important;
+}
+
+/* Workspace main content (Center panel) */
+.center-panel {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: calc(100vh - 64px);
+  overflow-y: auto;
+  background: rgba(10, 11, 14, 0.2);
+}
+
+/* Chat interface (Right panel) */
+.right-panel {
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 64px);
+  background: rgba(12, 13, 16, 0.4);
+}
+
+/* Scrollbars styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Button & form styles */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.btn-primary {
+  background: var(--accent-color);
+  box-shadow: 0 4px 14px 0 var(--accent-glow);
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 6px 20px 0 var(--accent-glow);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  border-color: var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.input-text {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.input-text:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+/* Data Table rendering grid */
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+
+.data-table th {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  padding: 10px 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-table tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Markdown Content Styling for Chat Messages */
+.markdown-content {
+  line-height: 1.6;
+  font-size: 13.5px;
+}
+
+.markdown-content p {
+  margin-bottom: 8px;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4 {
+  margin-top: 12px;
+  margin-bottom: 6px;
+  font-family: var(--font-title);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.markdown-content h1 { font-size: 16px; }
+.markdown-content h2 { font-size: 15px; }
+.markdown-content h3 { font-size: 14px; }
+
+.markdown-content ul,
+.markdown-content ol {
+  margin-left: 18px;
+  margin-bottom: 8px;
+}
+
+.markdown-content li {
+  margin-bottom: 4px;
+}
+
+.markdown-content strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.markdown-content code {
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.07);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #a5b4fc;
+}
+
+.markdown-content pre {
+  background: rgba(10, 12, 16, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px;
+  margin: 10px 0;
+  overflow-x: auto;
+}
+
+.markdown-content pre code {
+  background: transparent;
+  padding: 0;
+  color: var(--text-primary);
+}
+
+/* Markdown Table Styling — Clean, simple, non-breaking grid */
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+}
+
+.markdown-content th {
+  background: rgba(255, 255, 255, 0.06);
+  color: #f3f4f6;
+  padding: 8px 12px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.markdown-content td {
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.markdown-content tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.markdown-content tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.markdown-content blockquote {
+  border-left: 3px solid var(--accent-color);
+  background: rgba(99, 102, 241, 0.06);
+  padding: 8px 12px;
+  border-radius: 0 6px 6px 0;
+  margin: 8px 0;
+  color: var(--text-secondary);
+}
+
+/* Loading animations */
+.spinner {
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  border-top: 2px solid var(--accent-color);
+  width: 20px;
+  height: 20px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

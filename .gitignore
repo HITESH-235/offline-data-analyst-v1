@@ -1,0 +1,44 @@
+# Python virtual environments and caches
+venv/
+**/venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+**/.pytest_cache/
+.ipynb_checkpoints/
+
+# Node dependencies and builds
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+
+# Local configuration/env files
+.env
+.env.local
+.env.*.local
+
+# IDE and OS metadata
+.vscode/
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Output / generated assets
+output_chart.html
+output_chart.png
+**/output_chart.html
+**/output_chart.png
+
+# Databases and workspace artifacts
+server/workspace/
+workspace/
+*.db
+!datasets/northwind.db
+

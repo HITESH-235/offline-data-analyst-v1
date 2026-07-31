@@ -1,0 +1,11 @@
+player_name,position,age,market_value_eur,stamina_score,player_rating,top_speed_kmh,minutes_played,goals,assists,expected_goals_xg
+Erling Haaland,Forward,23,180000000,88,91,35.7,2850,36,8,32.4
+Kylian Mbappe,Forward,25,180000000,90,92,37.9,2910,41,10,38.1
+Jude Bellingham,Midfielder,20,180000000,92,90,32.5,3100,23,12,19.5
+Kevin De Bruyne,Midfielder,32,70000000,84,91,30.2,1800,6,18,8.2
+Bukayo Saka,Forward,22,120000000,89,87,33.8,2950,16,14,15.1
+Rodri,Midfielder,27,110000000,95,89,29.4,3400,9,7,6.8
+William Saliba,Defender,23,80000000,86,86,32.1,3240,2,1,2.1
+Virgil van Dijk,Defender,32,35000000,83,89,31.2,3000,4,2,3.5
+Alisson Becker,Goalkeeper,31,32000000,70,89,22.1,2700,0,1,0.0
+Declan Rice,Midfielder,25,110000000,94,87,31.8,3280,7,9,5.9
