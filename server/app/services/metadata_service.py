@@ -225,6 +225,15 @@ class MetadataService:
                     return json.load(f)
             except Exception as e:
                 logger.error(f"Failed to read cached profile '{profile_path}': {e}")
+
+        # Fallback for whole DB dataset_id (e.g. "northwind.db" -> "northwind.db::Products")
+        if "::" not in dataset_id and (dataset_id.endswith(".db") or dataset_id.endswith(".sqlite")):
+            profile_dir = settings.PROFILE_DIR
+            if os.path.exists(profile_dir):
+                for f_name in os.listdir(profile_dir):
+                    if f_name.startswith(f"profile_{dataset_id}::") and f_name.endswith(".json"):
+                        with open(os.path.join(profile_dir, f_name), "r", encoding="utf-8") as f:
+                            return json.load(f)
         return None
 
     @staticmethod
@@ -280,11 +289,114 @@ class MetadataService:
             f"{len(re_profiled)} re-profiled"
         )
 
+        # Generate compact catalog index with FK discovery
+        MetadataService.generate_catalog_index()
+
         return {
             "newly_profiled": newly_profiled,
             "skipped": skipped_unchanged,
             "re_profiled": re_profiled,
         }
+
+    @staticmethod
+    def _get_catalog_index_path() -> str:
+        return os.path.join(MetadataService._get_metadata_dir(), "catalog_index.json")
+
+    @staticmethod
+    def get_catalog_index() -> Dict[str, Any]:
+        path = MetadataService._get_catalog_index_path()
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to read catalog index: {e}")
+        return MetadataService.generate_catalog_index()
+
+    @staticmethod
+    def generate_catalog_index() -> Dict[str, Any]:
+        """
+        Builds a compact global index of all catalog tables and discovers foreign key relationships.
+        """
+        datasets_dir = settings.DATASETS_DIR
+        tables_summary = {}
+        relationships = []
+
+        # 1. Discover SQLite Foreign Key relationships
+        if os.path.exists(datasets_dir):
+            for filename in sorted(os.listdir(datasets_dir)):
+                ext = filename.split(".")[-1].lower() if "." in filename else ""
+                if ext in ["db", "sqlite"]:
+                    filepath = os.path.join(datasets_dir, filename)
+                    try:
+                        import sqlite3
+                        conn = sqlite3.connect(filepath)
+                        cur = conn.cursor()
+                        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
+                        tbls = [r[0] for r in cur.fetchall()]
+                        for tbl in tbls:
+                            try:
+                                cur.execute(f"PRAGMA foreign_key_list(\"{tbl}\")")
+                                fk_rows = cur.fetchall()
+                                for fk in fk_rows:
+                                    target_tbl = fk[2]
+                                    from_col = fk[3]
+                                    to_col = fk[4]
+                                    relationships.append({
+                                        "from_table": f"{filename}::{tbl}",
+                                        "from_column": from_col,
+                                        "to_table": f"{filename}::{target_tbl}",
+                                        "to_column": to_col
+                                    })
+                            except Exception:
+                                pass
+                        conn.close()
+                    except Exception as err:
+                        logger.warning(f"Error scanning FKs for '{filename}': {err}")
+
+        # 2. Build compact summary from cached profiles
+        meta_dir = MetadataService._get_metadata_dir()
+        if os.path.exists(meta_dir):
+            for meta_file in sorted(os.listdir(meta_dir)):
+                if meta_file.startswith("profile_") and meta_file.endswith(".json"):
+                    try:
+                        with open(os.path.join(meta_dir, meta_file), "r", encoding="utf-8") as f:
+                            prof = json.load(f)
+                        ds_id = prof.get("dataset_id")
+                        if not ds_id:
+                            continue
+
+                        cols = prof.get("columns", [])
+                        row_count = prof.get("row_count", 0)
+                        parent_db = prof.get("parent_db")
+                        table_name = prof.get("table_name") or prof.get("filename")
+
+                        tables_summary[ds_id] = {
+                            "table_id": ds_id,
+                            "filename": prof.get("filename"),
+                            "parent_db": parent_db,
+                            "table_name": table_name,
+                            "columns": cols,
+                            "row_count": row_count,
+                            "data_types": prof.get("data_types", {})
+                        }
+                    except Exception:
+                        pass
+
+        index_data = {
+            "tables": tables_summary,
+            "relationships": relationships,
+            "generated_at": datetime.datetime.utcnow().isoformat()
+        }
+
+        path = MetadataService._get_catalog_index_path()
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(index_data, f, indent=4)
+        except Exception as e:
+            logger.error(f"Failed to save catalog index: {e}")
+
+        return index_data
 
     @staticmethod
     def list_available_datasets() -> List[str]:

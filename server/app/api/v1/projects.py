@@ -1,7 +1,10 @@
+import json
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 from app.storage.sqlite.session import get_db
+from app.models.chat import DBChatHistory
 from app.models.project import Project, ProjectCreate, ProjectRename
 from app.services.project_service import ProjectService
 
@@ -41,3 +44,50 @@ def delete_project(project_id: str, db: Session = Depends(get_db)):
     if not success:
         raise HTTPException(status_code=404, detail="Project not found")
     return None
+
+
+@router.get("/{project_id}/analyses")
+def list_saved_analyses(project_id: str, db: Session = Depends(get_db)):
+    # Opening a saved result is local, so bound each snapshot loaded by the list.
+    max_snapshot_bytes = 8 * 1024 * 1024
+    metadata = case(
+        (func.length(DBChatHistory.metadata_json) <= max_snapshot_bytes, DBChatHistory.metadata_json),
+        else_=None,
+    ).label("metadata")
+    messages = db.query(DBChatHistory.id, DBChatHistory.content, DBChatHistory.created_at, metadata).filter(
+        DBChatHistory.project_id == project_id,
+        DBChatHistory.role == "assistant",
+        DBChatHistory.metadata_json.isnot(None),
+    ).order_by(DBChatHistory.created_at.desc()).all()
+    snapshots = []
+    for message in messages:
+        if message.metadata is None:
+            snapshots.append({"id": message.id, "unavailable": "Snapshot exceeds the 8 MiB workspace limit."})
+            continue
+        try:
+            metadata = json.loads(message.metadata)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(metadata, dict):
+            continue
+        result = metadata.get("results")
+        if not isinstance(result, dict) or not result.get("columns") or not isinstance(result.get("data"), list):
+            continue
+        calculation = metadata.get("calculation") or {}
+        step = next((
+            step for step in reversed(calculation.get("steps", []))
+            if step.get("status") == "succeeded" and step.get("tool") != "run_code"
+        ), {})
+        # Legacy statistics responses included the input rows, not a result table.
+        if step.get("tool") == "statistics" and step.get("parameters", {}).get("return_table") is not True:
+            continue
+        snapshots.append({
+            "id": message.id,
+            "content": message.content,
+            "question": metadata.get("question"),
+            "saved_at": message.created_at.isoformat() + "Z" if message.created_at else None,
+            "result": result,
+            "tables": step.get("tables", []),
+            "calculation": calculation,
+        })
+    return snapshots

@@ -12,12 +12,24 @@ def run_isolated(data_path: str, code_content: str, output_dir: str):
     # 1. Load dataset
     ext = data_path.split(".")[-1].lower()
     try:
-        if ext == "csv":
+        if data_path.endswith('.csv'):
             df = pd.read_csv(data_path)
-        elif ext == "xlsx":
+        elif data_path.endswith('.xlsx'):
             df = pd.read_excel(data_path)
-        elif ext == "json":
+        elif data_path.endswith('.json'):
             df = pd.read_json(data_path)
+        elif data_path.endswith('.db') or data_path.endswith('.sqlite'):
+            import sqlite3
+            conn = sqlite3.connect(data_path)
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
+            tbls = [r[0] for r in cur.fetchall()]
+            if tbls:
+                target = "Orders" if "Orders" in tbls else tbls[0]
+                df = pd.read_sql_query(f"SELECT * FROM \"{target}\"", conn)
+            else:
+                df = pd.DataFrame()
+            conn.close()
         else:
             raise ValueError("Unsupported data format.")
     except Exception as e:

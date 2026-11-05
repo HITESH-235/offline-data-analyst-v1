@@ -9,11 +9,15 @@ Flow:
   5. Save assistant response to DB and return
 """
 
+import asyncio
 import json
+import time
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
-from app.storage.sqlite.session import get_db
+from app.storage.sqlite.session import SessionLocal, get_db
 from app.models.chat import ChatRequest, DBChatHistory
 from app.services.dataset_manager import DatasetManager
 from app.services.metadata_service import MetadataService
@@ -28,6 +32,42 @@ def handle_chat_message(
     request: ChatRequest,
     db: Session = Depends(get_db)
 ):
+    return process_chat_message(request, db, lambda stage: None)[0]
+
+
+@router.post("/message/stream")
+async def stream_chat_message(request: ChatRequest):
+    loop = asyncio.get_running_loop()
+    events = asyncio.Queue()
+    start = time.monotonic()
+
+    def emit(stage, **payload):
+        event = {"stage": stage, "elapsed_ms": round((time.monotonic() - start) * 1000), **payload}
+        loop.call_soon_threadsafe(events.put_nowait, event)
+
+    def run():
+        try:
+            with SessionLocal() as db:
+                result, failed = process_chat_message(request, db, emit)
+            emit("failed" if failed else "completed", result=result)
+        except HTTPException as error:
+            emit("failed", error=error.detail)
+        except Exception:
+            emit("failed", error="The analyst could not finish the request.")
+
+    async def stream():
+        worker = asyncio.create_task(run_in_threadpool(run))
+        while True:
+            event = await events.get()
+            yield json.dumps(event) + "\n"
+            if event["stage"] in {"completed", "failed"}:
+                await worker
+                return
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def process_chat_message(request, db, emit):
     dataset_id = request.dataset_id
     project_id = request.project_id
     user_msg = request.message
@@ -53,6 +93,7 @@ def handle_chat_message(
     db.add(db_user_msg)
     db.commit()
 
+    emit("classifying")
     # --- Step 3: Classify intent ---
     try:
         plan_response = QueryPlanner.plan_query(user_msg, profile)
@@ -70,20 +111,25 @@ def handle_chat_message(
             project_id=project_id,
             db=db,
             max_turns=5,
+            emit=emit,
         )
     except Exception as e:
         agent_result = {
+            "failed": True,
             "content": f"Agent encountered an error: {e}",
             "type": "text",
         }
 
     # --- Step 5: Save assistant response and return ---
+    failed = agent_result.pop("failed", False)
     assistant_id = str(uuid.uuid4())
     content = agent_result.get("content", "")
     msg_type = agent_result.get("type", "text")
 
     # Build metadata from agent results (code, chart, raw data)
-    metadata = {}
+    metadata = {"question": user_msg, "user_message_id": user_history_id}
+    if agent_result.get("calculation"):
+        metadata["calculation"] = agent_result["calculation"]
     if agent_result.get("results"):
         metadata["results"] = agent_result["results"]
     if agent_result.get("code"):
@@ -109,4 +155,4 @@ def handle_chat_message(
         "type": msg_type,
         "intent": intent,
         **{k: v for k, v in agent_result.items() if k not in ("content", "type")},
-    }
+    }, failed

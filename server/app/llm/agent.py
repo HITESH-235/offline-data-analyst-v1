@@ -10,8 +10,9 @@ Flow:
 
 import json
 import logging
-from typing import Dict, Any
-
+from typing import Dict, Any, Optional
+from app.services.dataset_manager import DatasetManager
+from app.services.metadata_service import MetadataService
 from app.llm.client import OllamaClient
 from app.llm.prompts import (
     SIMPLE_TOOLS_PROMPT,
@@ -55,6 +56,7 @@ class Agent:
         project_id: Optional[str] = None,
         db: Any = None,
         max_turns: int = 5,
+        emit=None,
     ) -> Dict[str, Any]:
         """
         Main entry point. Returns a dict with:
@@ -65,8 +67,45 @@ class Agent:
           - chart_base64: (optional) chart image
         """
 
-        # --- 1. Build the system prompt with schema + tool instructions ---
-        schema_desc = _format_schema(profile)
+        # --- 0. Table Selection Step (Pre-query routing) ---
+        from app.llm.table_selector import TableSelector
+        emit = emit or (lambda stage: None)
+        if intent in {"SIMPLE", "COMPLEX"}:
+            emit("selecting_tables")
+        selection = TableSelector.select_tables(user_query, dataset_id) if intent in {"SIMPLE", "COMPLEX"} else {}
+        selected_tables = list(dict.fromkeys(selection.get("tables_needed", [dataset_id])))
+        join_keys = selection.get("join_keys", []) if len(selected_tables) > 1 else []
+        source = {"tables": selected_tables, "join_keys": join_keys}
+        steps = []
+        dataframe = None
+        try:
+            if len(selected_tables) > 1 or (
+                intent == "COMPLEX" and "::" in selected_tables[0]
+            ):
+                dataframe = DatasetManager.load_joined_dataframe(selected_tables, join_keys)
+        except Exception as error:
+            return {
+                "failed": True,
+                "content": "I could not prepare the tables for analysis.",
+                "type": "text",
+                "calculation": {"steps": [{"tool": "Prepare tables", "status": "failed", "error": str(error)}]},
+            }
+        dataset_id = selected_tables[0]
+
+        # Fetch targeted profiles ONLY for selected tables
+        targeted_profiles = []
+        for t_id in selected_tables:
+            p = MetadataService.get_profile(t_id)
+            if p:
+                targeted_profiles.append(p)
+
+        if not targeted_profiles:
+            targeted_profiles = [profile]
+
+        # Combine schema descriptions for selected tables
+        schema_desc = "\n\n".join([_format_schema(p) for p in targeted_profiles])
+        if dataframe is not None:
+            schema_desc += "\n\nUse these exact dataframe column names: " + json.dumps(list(dataframe.columns))
         tool_prompt = TOOL_PROMPTS.get(intent, CONVERSATION_TOOLS_PROMPT)
 
         system_prompt = AGENT_SYSTEM_TEMPLATE.format(
@@ -88,6 +127,8 @@ class Agent:
         response_type = "text"
 
         # --- 3. Agent loop ---
+        if intent == "CONVERSATION":
+            emit("preparing_answer")
         for turn in range(max_turns):
             logger.info(f"Agent turn {turn + 1}/{max_turns} | intent={intent}")
 
@@ -99,9 +140,12 @@ class Agent:
             try:
                 action = json.loads(raw_response)
             except json.JSONDecodeError:
+                if steps and steps[-1]["status"] == "failed":
+                    break
                 # LLM didn't return valid JSON — treat as final answer text
                 return {
                     "content": raw_response,
+                    "calculation": {"steps": steps} if steps else None,
                     "type": "text",
                 }
 
@@ -109,10 +153,13 @@ class Agent:
 
             # Case A: Agent is done, return final answer
             if action.get("action") == "final_answer":
+                if steps and steps[-1]["status"] == "failed":
+                    break
                 return {
                     "content": action.get("content", ""),
                     "type": response_type,
                     "results": last_results,
+                    "calculation": {"steps": steps} if steps else None,
                     "code": last_code,
                     "chart_base64": last_chart_base64,
                 }
@@ -131,19 +178,32 @@ class Agent:
                     continue
 
                 # Execute the tool and get the observation
+                emit("running_tool")
                 observation, tool_results = _execute_tool(
-                    tool_name, parameters, dataset_id, db, profile, project_id=project_id
+                    tool_name, parameters, dataset_id, db, profile, project_id=project_id, dataframe=dataframe
                 )
+
+                step = {
+                    "tool": tool_name,
+                    "parameters": parameters,
+                    "status": "succeeded" if tool_results is not None else "failed",
+                    **source,
+                }
+                if tool_results is None:
+                    step["error"] = observation
+                steps.append(step)
 
                 # Track results for the response
                 if tool_results:
+                    if turn + 1 < max_turns:
+                        emit("preparing_answer")
                     if tool_name == "run_code":
                         last_code = parameters.get("code", "")
                         last_chart_base64 = tool_results.get("chart_base64")
                         response_type = "code"
                     else:
                         last_results = tool_results
-                        response_type = "table"
+                        response_type = "table" if tool_results.get("columns") and isinstance(tool_results.get("data"), list) else "text"
 
                 # Add this exchange to message history so agent sees what happened
                 messages.append({"role": "assistant", "content": raw_response})
@@ -154,8 +214,18 @@ class Agent:
             messages.append({"role": "assistant", "content": raw_response})
             messages.append({"role": "user", "content": "ERROR: Invalid action. Use 'tool_call' or 'final_answer'."})
 
+        if steps and steps[-1]["status"] == "failed":
+            return {
+                "failed": True,
+                "content": f"I could not complete the calculation. {steps[-1]['error']}",
+                "type": "text",
+                "calculation": {"steps": steps},
+            }
+
         # Max turns exhausted — return whatever we have
         return {
+            "calculation": {"steps": steps} if steps else None,
+            "failed": True,
             "content": "I was unable to fully complete the analysis within the allowed steps.",
             "type": response_type,
             "results": last_results,
@@ -191,6 +261,7 @@ def _execute_tool(
     db,
     profile: Dict[str, Any],
     project_id: Optional[str] = None,
+    *, dataframe=None,
 ) -> tuple:
     """
     Runs the requested tool and returns:
@@ -219,7 +290,7 @@ def _execute_tool(
             elif tool_name == "visualization":
                 exec_plan["visualization"] = parameters
 
-            results = AnalysisEngine.execute_plan(db, dataset_id, exec_plan)
+            results = AnalysisEngine.execute_plan(db, dataset_id, exec_plan, dataframe=dataframe, validate_tool_arguments=True)
 
             # Build a concise observation for the agent
             observation = _summarize_results(results)
@@ -243,7 +314,7 @@ def _execute_tool(
             if not db_dataset:
                 return "ERROR: Dataset not found.", None
 
-            run_result = SandboxRunner.run_code(dataset_id=dataset_id, python_code=code, project_id=project_id)
+            run_result = SandboxRunner.run_code(dataset_id=dataset_id, python_code=code, project_id=project_id, dataframe=dataframe)
 
             # Read chart if generated
             chart_base64 = None

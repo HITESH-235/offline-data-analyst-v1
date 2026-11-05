@@ -52,7 +52,7 @@ class SandboxRunner:
         return target_path
 
     @staticmethod
-    def run_code(dataset_id: str, python_code: str, project_id: Optional[str] = None) -> Dict[str, Any]:
+    def run_code(dataset_id: str, python_code: str, project_id: Optional[str] = None, *, dataframe=None) -> Dict[str, Any]:
         """
         Validates python_code and executes it in an isolated subprocess.
         Returns execution results including stdout, error trace, and generated plot paths.
@@ -69,7 +69,7 @@ class SandboxRunner:
 
         # 2. Resolve dataset path safely
         try:
-            dataset_filepath = SandboxRunner._resolve_dataset_path(dataset_id)
+            dataset_filepath = SandboxRunner._resolve_dataset_path(dataset_id) if dataframe is None else None
         except Exception as resolve_err:
             return {
                 "success": False,
@@ -83,6 +83,14 @@ class SandboxRunner:
         code_file_path = os.path.join(temp_dir, "user_script.py")
         
         try:
+            if dataframe is not None:
+                import sqlite3
+                from contextlib import closing
+
+                dataset_filepath = os.path.join(temp_dir, "analysis.db")
+                with closing(sqlite3.connect(dataset_filepath)) as connection:
+                    dataframe.to_sql("analysis", connection, index=False)
+
             # Write python script to execution environment
             with open(code_file_path, "w") as f:
                 f.write(python_code)

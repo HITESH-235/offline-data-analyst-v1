@@ -9,6 +9,9 @@ Your job is to analyze the user's question, inspect the dataset metadata, and cl
 2. "COMPLEX": The request is too complex for basic filters/aggregations and requires custom calculations, Python logic, pivot transformations, or plotting (e.g. data transformations, statistical models, distributions).
 3. "CONVERSATION": The request is a normal question or chat message that does not ask for analytical calculations on the dataset (e.g. greeting, general explanation, dataset schema explanation).
 
+A declared SQLite foreign-key join can be prepared by the backend before a SIMPLE operation.
+For example, "Join Products and Order Details on ProductID, sum Quantity by ProductName, and sort from highest to lowest" is SIMPLE. The join does not require generated Python.
+
 You must respond in strict JSON format. Do not add any conversational text or explanation outside the JSON.
 
 Expected JSON output format:
@@ -39,6 +42,30 @@ User Query:
 "{user_query}"
 """
 
+TABLE_SELECTOR_SYSTEM_PROMPT = """You are the Table Selector component of an Offline AI Data Analyst system.
+Your job is to inspect the user's question, the compact catalog index of all available tables, and relationship metadata (foreign keys).
+You must select the minimal set of dataset/table IDs required to answer the user's question.
+
+Rules:
+1. If the question can be answered using only a single table, return that single table ID in "tables_needed".
+2. If the question requires cross-table columns (e.g. ProductName in Products table and Quantity/UnitPrice in Order Details table), return all required table IDs in "tables_needed" along with join_keys connecting them.
+3. Always respond with valid JSON only. Do not add explanations outside the JSON.
+
+Expected JSON output format:
+{
+  "tables_needed": ["northwind.db::Products", "northwind.db::Order Details"],
+  "join_keys": [
+    {
+      "from_table": "northwind.db::Order Details",
+      "from_column": "ProductID",
+      "to_table": "northwind.db::Products",
+      "to_column": "ProductID"
+    }
+  ],
+  "reasoning": "Brief explanation of why these tables and join keys were selected."
+}
+"""
+
 
 # ============================================================
 # STEP 2: AGENT — intent-specific tool instructions
@@ -58,6 +85,11 @@ You have these tools available:
    - aggregations: dict mapping column name to function (e.g. {{"salary": "mean"}})
    - sort_by: (optional) column name to sort results
    - ascending: (optional) true or false
+   Use exact dataframe column names. Put the operation in the value of the
+   aggregations mapping. Never use SQL expressions or invented table aliases.
+   Example for Northwind Products joined to Order Details on ProductID:
+   {"action":"tool_call","tool":"aggregation","parameters":{"group_by":["ProductName"],"aggregations":{"Quantity":"sum"},"sort_by":"Quantity","ascending":false}}
+   If the tool returns an error, correct the parameters and retry before answering.
 
 2. TOOL: "filtering"
    Use for: selecting rows that match conditions.
@@ -68,6 +100,10 @@ You have these tools available:
    Use for: computing descriptive statistics (mean, median, std, min, max, quartiles).
    Parameters:
    - columns: list of column names to compute stats for
+   - return_table: optional boolean, default false. Set true ONLY when the user explicitly asks for a statistics table. This returns one row per numeric column with calculated statistics.
+   For a general request such as "Summarize this dataset", use statistics as evidence and explain the summary in chat. Leave return_table false. Do not use filtering or visualization simply to return the original rows as a summary.
+   Example for a narrative summary: {{"action":"tool_call","tool":"statistics","parameters":{{"columns":["Quantity"],"return_table":false}}}}
+   Example for an explicitly requested statistics table: {{"action":"tool_call","tool":"statistics","parameters":{{"columns":["Quantity"],"return_table":true}}}}
 
 4. TOOL: "correlation"
    Use for: computing correlation between numeric columns.
