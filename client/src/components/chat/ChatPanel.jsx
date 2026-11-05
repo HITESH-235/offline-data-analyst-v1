@@ -1,17 +1,46 @@
 import React, { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import CalculationDetails from "./CalculationDetails";
 import { useProject } from "../../context/ProjectContext";
-import { Send, Bot, User, Code, AlertCircle, FileText, Image } from "lucide-react";
+import { Send, Bot, User, Image, ArrowUpRight } from "lucide-react";
 
-export const ChatPanel = () => {
+const STAGES = {
+  connecting: "Connecting to the analyst",
+  classifying: "Reading the question",
+  selecting_tables: "Selecting tables",
+  running_tool: "Running analysis",
+  preparing_answer: "Preparing the answer",
+  completed: "Completed",
+  failed: "Failed",
+};
+
+function ChatProgress({ message }) {
+  const [now, setNow] = useState(() => performance.now());
+  useEffect(() => {
+    if (!message.pending) return;
+    const timer = setInterval(() => setNow(performance.now()), 250);
+    return () => clearInterval(timer);
+  }, [message.pending]);
+  const elapsed = message.elapsedMs ?? Math.max(0, now - message.startedAt);
+  return (
+    <div className="chat-progress">
+      <span role="status" title={message.datasetName}>{STAGES[message.stage]} · {message.datasetName}</span>
+      <span className="elapsed">{(elapsed / 1000).toFixed(1)} s</span>
+    </div>
+  );
+}
+
+export const ChatPanel = ({ datasetName, onOpenResult }) => {
   const { chatHistory, sendChatMessage, chatLoading, activeDatasetId } = useProject();
   const [inputText, setInputText] = useState("");
   const scrollRef = useRef(null);
+  const inputRef = useRef(null);
+  const canSend = Boolean(activeDatasetId) && !chatLoading;
 
   const handleSend = (e) => {
     e.preventDefault();
-    if (!inputText.trim() || chatLoading) return;
+    if (!inputText.trim() || !canSend) return;
     sendChatMessage(inputText.trim());
     setInputText("");
   };
@@ -26,10 +55,12 @@ export const ChatPanel = () => {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
       {/* Header title */}
-      <div style={{ padding: "16px", borderBottom: "1px solid var(--border-color)", background: "rgba(0,0,0,0.15)" }}>
+      <div className="analyst-heading" style={{ padding: "16px", borderBottom: "1px solid var(--border-color)", background: "var(--bg-card)" }}>
         <h3 style={{ fontSize: "14px", fontWeight: "600", textTransform: "uppercase", color: "var(--text-secondary)" }}>
-          AI Analyst Chat
+          AI Analyst
         </h3>
+        <span className="eyebrow">Ask · explore · understand</span>
+        <p className="chat-dataset" title={datasetName}>{datasetName || "Select a dataset to start"}</p>
       </div>
 
       {/* Message Feed list */}
@@ -37,8 +68,21 @@ export const ChatPanel = () => {
         {chatHistory.length === 0 ? (
           <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", height: "100%", flexDirection: "column", color: "var(--text-muted)", fontSize: "13px", gap: "8px" }}>
             <Bot size={36} color="var(--accent-color)" />
-            <span>Ask questions about your active dataset.</span>
-            <span>Example: "What is the average sales grouped by Month?"</span>
+            <span>{activeDatasetId ? "Start with a question about your data." : "Choose a dataset in Projects."}</span>
+            {activeDatasetId && ["Summarize this dataset.", "Which columns have missing values?"].map((question) => (
+              <button
+                key={question}
+                type="button"
+                className="btn btn-secondary"
+                disabled={!canSend}
+                onClick={() => {
+                  setInputText(question);
+                  inputRef.current?.focus();
+                }}
+              >
+                {question}
+              </button>
+            ))}
           </div>
         ) : (
           chatHistory.map((msg, index) => {
@@ -48,13 +92,26 @@ export const ChatPanel = () => {
             let meta = {};
             if (msg.metadata_json) {
               try {
-                meta = JSON.parse(msg.metadata_json);
-              } catch (e) {}
+                meta = JSON.parse(msg.metadata_json) ?? {};
+              } catch {
+                // Older messages may not have valid metadata.
+              }
             }
+
+            const calculation = msg.calculation ?? meta.calculation;
+            const result = msg.results ?? meta.results;
+            const resultStep = calculation?.steps?.findLast(
+              (step) => step.status === "succeeded" && step.tool !== "run_code"
+            );
+
+            const narrativeStatistics = resultStep?.tool === "statistics" && resultStep?.parameters?.return_table !== true;
+            const hasResult = !narrativeStatistics && Array.isArray(result?.data) && result?.columns?.length > 0;
+            const tables = resultStep?.tables ?? (msg.datasetId ? [msg.datasetId] : []);
 
             return (
               <div
                 key={msg.id || index}
+                className={`chat-turn ${isUser ? "user-turn" : "analyst-turn"}`}
                 style={{
                   display: "flex",
                   gap: "12px",
@@ -67,7 +124,7 @@ export const ChatPanel = () => {
                   style={{
                     padding: "8px",
                     borderRadius: "50%",
-                    background: isUser ? "rgba(99, 102, 241, 0.15)" : "rgba(16, 185, 129, 0.15)",
+                    background: "var(--accent-glow)",
                     border: "1px solid",
                     borderColor: isUser ? "var(--accent-color)" : "var(--success-color)",
                     display: "flex",
@@ -80,24 +137,43 @@ export const ChatPanel = () => {
 
                 {/* Dialog Content Bubble */}
                 <div
-                  className="glass-panel"
+                  className={`glass-panel chat-message ${msg.pending ? "chat-pending" : ""}`}
                   style={{
                     padding: "14px",
                     maxWidth: "88%",
+                    minWidth: 0,
+                    overflowWrap: "anywhere",
                     borderRadius: "12px",
                     fontSize: "13.5px",
-                    background: isUser ? "rgba(22, 24, 30, 0.9)" : "rgba(15, 17, 22, 0.95)"
+                    background: isUser ? "var(--accent-glow)" : "var(--bg-card)"
                   }}
                 >
+                  <div className="message-author">{isUser ? "You" : "Analyst"}</div>
+                  {msg.stage && <ChatProgress message={msg} />}
+
                   {/* Message body text with Markdown formatting */}
                   <div className="markdown-content">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content ?? ""}</ReactMarkdown>
                   </div>
+
+                  {hasResult && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary chat-result-card"
+                      onClick={() => onOpenResult({ id: msg.id, result, tables, calculation })}
+                    >
+                      <strong>Open result <ArrowUpRight size={15} aria-hidden="true" /></strong>
+                      <span>{tables.join(" · ") || "Source unavailable"}</span>
+                      <span>{result.data.length.toLocaleString()} rows</span>
+                    </button>
+                  )}
+
+                  {!hasResult && <CalculationDetails calculation={calculation} />}
 
                   {/* Render base64 image if complex execution created a plot */}
                   {meta.chart_base64 && (
-                    <div style={{ marginTop: "12px", border: "1px solid var(--border-color)", borderRadius: "8px", overflow: "hidden", background: "#000" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px", background: "rgba(255,255,255,0.03)", fontSize: "11px", color: "var(--text-secondary)" }}>
+                    <div style={{ marginTop: "12px", border: "1px solid var(--border-color)", borderRadius: "8px", overflow: "hidden", background: "var(--bg-card)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px", background: "var(--bg-main)", fontSize: "11px", color: "var(--text-secondary)" }}>
                         <Image size={12} />
                         <span>Captured Plotly/Matplotlib Plot</span>
                       </div>
@@ -114,36 +190,32 @@ export const ChatPanel = () => {
           })
         )}
 
-        {/* Dynamic chat loader bubble */}
-        {chatLoading && (
-          <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
-            <div style={{ padding: "8px", borderRadius: "50%", background: "rgba(16, 185, 129, 0.15)", border: "1px solid var(--success-color)" }}>
-              <Bot size={14} />
-            </div>
-            <div className="glass-panel" style={{ padding: "12px", borderRadius: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
-              <div className="spinner"></div>
-              <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Analysing query instructions...</span>
-            </div>
-          </div>
-        )}
         <div ref={scrollRef} />
       </div>
 
       {/* Input container footer */}
-      <form onSubmit={handleSend} style={{ padding: "16px", borderTop: "1px solid var(--border-color)", background: "rgba(0,0,0,0.15)", display: "flex", gap: "8px" }}>
-        <input
-          type="text"
+      <form className="chat-composer" onSubmit={handleSend} style={{ padding: "16px", borderTop: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", gap: "8px" }}>
+        <textarea
+          ref={inputRef}
+          rows={2}
+          aria-label="Question for the analyst"
           className="input-text"
-          placeholder={activeDatasetId ? "Type question about dataset..." : "Select active dataset first..."}
+          placeholder={activeDatasetId ? "Ask a question about your data…" : "Select a dataset first"}
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          disabled={!activeDatasetId || chatLoading}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              handleSend(e);
+            }
+          }}
+          disabled={!activeDatasetId}
         />
         <button
           className="btn btn-primary"
           style={{ padding: "10px" }}
           type="submit"
-          disabled={!activeDatasetId || chatLoading || !inputText.trim()}
+          aria-label="Send question"
+          disabled={!canSend || !inputText.trim()}
         >
           <Send size={16} />
         </button>

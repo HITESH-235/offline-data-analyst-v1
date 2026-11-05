@@ -1,36 +1,25 @@
-import React, { useState } from "react";
+import SavedAnalyses from "./SavedAnalyses";
+import ResultWorkspace from "./ResultWorkspace";
 import { useProject } from "../../context/ProjectContext";
-import { Table, BarChart2, Hash, AlertTriangle, Disc } from "lucide-react";
+import { Table, BarChart2, Hash, AlertTriangle, List, ArrowLeft } from "lucide-react";
 
-export const DatasetViewer = () => {
+export const DatasetViewer = ({ datasetName, activeTab, setActiveTab, selectedResult, onOpenResult }) => {
   const { activeDatasetPreview, activeDatasetProfile, isLoading } = useProject();
-  const [activeTab, setActiveTab] = useState("preview"); // "preview" or "profile"
-
-  if (isLoading) {
-    return (
-      <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", height: "100%" }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" }}>
-          <div className="spinner"></div>
-          <span style={{ fontSize: "14px", color: "var(--text-secondary)" }}>Loading dataset parameters...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!activeDatasetPreview) {
-    return (
-      <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", fontSize: "14px" }}>
-        No dataset selected. Please choose a dataset from the available datasets catalog in the sidebar.
-      </div>
-    );
-  }
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "16px", height: "100%" }}>
-      {/* Tabs head bar */}
-      <div style={{ display: "flex", gap: "12px", borderBottom: "1px solid var(--border-color)", paddingBottom: "8px" }}>
+    <div className="dataset-workspace">
+      <header className="workspace-heading">
+        <span className="eyebrow">Analysis workspace</span>
+        <h1>{{ preview: "Data Preview", profile: "Data Profiling", result: "Result", saved: "Saved Analyses" }[activeTab]}</h1>
+        {activeTab === "result" && (
+          <p className="source-context"><strong>Result source</strong> {selectedResult?.tables?.join(" · ") || "Unavailable"}</p>
+        )}
+        <p className="browse-context"><strong>{(activeTab === "result" || activeTab === "saved") ? "Browsing dataset" : "Dataset"}</strong> {datasetName}</p>
+      </header>
+      {activeTab === "result" && selectedResult?.fromLibrary && <button className="btn library-back" onClick={() => setActiveTab("saved")}><ArrowLeft size={14} />Back to Saved Analyses</button>}
+      {activeTab !== "saved" && <div className="workspace-toolbar" role="group" aria-label="Data view">
         <button
           className={`btn ${activeTab === "preview" ? "btn-primary" : "btn-secondary"}`}
+          aria-pressed={activeTab === "preview"}
           onClick={() => setActiveTab("preview")}
           style={{ padding: "6px 12px", fontSize: "13px" }}
         >
@@ -39,23 +28,40 @@ export const DatasetViewer = () => {
         </button>
         <button
           className={`btn ${activeTab === "profile" ? "btn-primary" : "btn-secondary"}`}
+          aria-pressed={activeTab === "profile"}
           onClick={() => setActiveTab("profile")}
           style={{ padding: "6px 12px", fontSize: "13px" }}
         >
           <BarChart2 size={14} />
           <span>Data Profiling</span>
         </button>
-      </div>
+        <button
+          className={`btn ${activeTab === "result" ? "btn-primary" : "btn-secondary"}`}
+          aria-pressed={activeTab === "result"}
+          onClick={() => setActiveTab("result")}
+        >
+          <List size={14} />
+          <span>Result</span>
+        </button>
+      </div>}
 
       {/* Tab body content */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-        {activeTab === "preview" ? (
-          <div className="table-container" style={{ maxHeight: "100%" }}>
+      <div className="workspace-body" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+        {activeTab === "saved" ? <SavedAnalyses onOpenResult={onOpenResult} /> : activeTab === "result" ? (
+          selectedResult ? (
+            <ResultWorkspace key={selectedResult.openId} snapshot={selectedResult} />
+          ) : <div className="workspace-empty"><List size={28} /><h2>Your next insight belongs here</h2><p>Open a result from chat or Saved Analyses to explore its table, chart, and calculation.</p></div>
+        ) : isLoading ? (
+          <p role="status">Loading dataset…</p>
+        ) : !activeDatasetPreview ? (
+          <div className="workspace-empty"><Table size={28} /><h2>Start with your data</h2><p>Choose a dataset in the sidebar, explore its columns, then ask the analyst a question.</p></div>
+        ) : activeTab === "preview" ? (
+          <div className="table-container preview-table" tabIndex={0} role="region" aria-label="Dataset preview">
             <table className="data-table">
               <thead>
                 <tr>
                   {activeDatasetPreview.columns.map((col, idx) => (
-                    <th key={idx}>{col}</th>
+                    <th key={idx} scope="col" className={activeDatasetPreview.data.some((row) => typeof row[col] === "number") ? "numeric" : undefined}>{col}</th>
                   ))}
                 </tr>
               </thead>
@@ -63,7 +69,7 @@ export const DatasetViewer = () => {
                 {activeDatasetPreview.data.map((row, rowIdx) => (
                   <tr key={rowIdx}>
                     {activeDatasetPreview.columns.map((col, colIdx) => (
-                      <td key={colIdx} title={String(row[col])}>
+                      <td key={colIdx} className={typeof row[col] === "number" ? "numeric" : undefined} title={String(row[col])}>
                         {String(row[col])}
                       </td>
                     ))}
@@ -127,7 +133,7 @@ export const DatasetViewer = () => {
                     </div>
 
                     {isNumeric ? (
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "8px", background: "rgba(255,255,255,0.02)", padding: "8px", borderRadius: "6px", fontSize: "12px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "8px", background: "var(--bg-main)", padding: "8px", borderRadius: "6px", fontSize: "12px" }}>
                         <div><span style={{ color: "var(--text-muted)" }}>Mean:</span> {activeDatasetProfile.numeric_summary[col].mean.toFixed(2)}</div>
                         <div><span style={{ color: "var(--text-muted)" }}>Std:</span> {activeDatasetProfile.numeric_summary[col].std.toFixed(2)}</div>
                         <div><span style={{ color: "var(--text-muted)" }}>Min:</span> {activeDatasetProfile.numeric_summary[col].min}</div>
@@ -136,7 +142,7 @@ export const DatasetViewer = () => {
                       </div>
                     ) : (
                       activeDatasetProfile.categorical_summary[col] && (
-                        <div style={{ display: "flex", gap: "16px", background: "rgba(255,255,255,0.02)", padding: "8px", borderRadius: "6px", fontSize: "12px" }}>
+                        <div style={{ display: "flex", gap: "16px", background: "var(--bg-main)", padding: "8px", borderRadius: "6px", fontSize: "12px" }}>
                           <div><span style={{ color: "var(--text-muted)" }}>Top Value:</span> "{activeDatasetProfile.categorical_summary[col].top}"</div>
                           <div><span style={{ color: "var(--text-muted)" }}>Freq:</span> {activeDatasetProfile.categorical_summary[col].frequency}</div>
                         </div>

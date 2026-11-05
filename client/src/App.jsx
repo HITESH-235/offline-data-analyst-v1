@@ -5,7 +5,6 @@ import ChatPanel from "./components/chat/ChatPanel";
 import { useProject } from "./context/ProjectContext";
 import {
   Terminal,
-  Database,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -13,15 +12,31 @@ import {
 } from "lucide-react";
 
 function App() {
-  const { activeProjectName, activeDatasetId, datasets } = useProject();
+  const { activeProjectId, activeProjectName, activeDatasetId, datasets } = useProject();
+
+  const [workspaceView, setWorkspaceView] = useState("data");
+
+  const [resultByProject, setResultByProject] = useState({});
+  const [tabByProject, setTabByProject] = useState({});
+  const activeTab = tabByProject[activeProjectId] ?? "preview";
+
+  function setActiveTab(tab) {
+    setTabByProject((previous) => ({ ...previous, [activeProjectId]: tab }));
+  }
+
+  function openResult(result) {
+    setResultByProject((previous) => ({ ...previous, [activeProjectId]: { ...result, openId: crypto.randomUUID() } }));
+    setActiveTab("result");
+    setWorkspaceView("data");
+  }
 
   const activeDataset = datasets.find((d) => d.id === activeDatasetId);
-  const datasetNameLabel = activeDataset ? activeDataset.filename : "None";
+  const datasetNameLabel = activeDataset?.filename || activeDatasetId || "None";
 
   // Left Sidebar State (width & visibility)
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem("sidebarWidth");
-    return saved ? parseInt(saved, 10) : 280;
+    return saved ? parseInt(saved, 10) : 228;
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     const saved = localStorage.getItem("isSidebarOpen");
@@ -31,7 +46,7 @@ function App() {
   // Right Chat Panel State (width & visibility)
   const [chatWidth, setChatWidth] = useState(() => {
     const saved = localStorage.getItem("chatWidth");
-    return saved ? parseInt(saved, 10) : 400;
+    return saved ? parseInt(saved, 10) : 320;
   });
   const [isChatOpen, setIsChatOpen] = useState(() => {
     const saved = localStorage.getItem("isChatOpen");
@@ -104,14 +119,15 @@ function App() {
 
   return (
     <div
-      className={`app-container ${resizingPanel ? "resizing" : ""}`}
-      style={{ gridTemplateColumns: `${leftCol} 1fr ${rightCol}` }}
+      className={`app-container view-${workspaceView} ${resizingPanel ? "resizing" : ""}`}
+      style={{ "--left-column": leftCol, "--right-column": rightCol }}
     >
       {/* Top Header section */}
       <header className="header">
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <button
-            className="btn btn-secondary icon-only-btn"
+            className="btn btn-secondary icon-only-btn desktop-panel-toggle"
+            aria-expanded={isSidebarOpen}
             onClick={toggleSidebar}
             title={isSidebarOpen ? "Collapse Projects Sidebar" : "Expand Projects Sidebar"}
             style={{ padding: "6px" }}
@@ -120,7 +136,7 @@ function App() {
           </button>
 
           <div className="header-logo">
-            <Terminal size={22} color="#818cf8" />
+            <Terminal size={22}  />
             <span>Offline AI Data Analyst</span>
           </div>
         </div>
@@ -133,27 +149,9 @@ function App() {
             </span>
           </div>
 
-          {activeDatasetId && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                background: "rgba(255,255,255,0.03)",
-                padding: "4px 10px",
-                borderRadius: "20px",
-                border: "1px solid var(--border-color)",
-              }}
-            >
-              <Database size={13} color="#10b981" />
-              <span style={{ fontWeight: "500", color: "var(--success-color)" }}>
-                {datasetNameLabel}
-              </span>
-            </div>
-          )}
-
           <button
-            className="btn btn-secondary icon-only-btn"
+            className="btn btn-secondary icon-only-btn desktop-panel-toggle"
+            aria-expanded={isChatOpen}
             onClick={toggleChat}
             title={isChatOpen ? "Collapse AI Chat Panel" : "Expand AI Chat Panel"}
             style={{ padding: "6px" }}
@@ -163,16 +161,30 @@ function App() {
         </div>
       </header>
 
+      <nav className="workspace-nav" aria-label="Workspace view">
+        {["Projects", "Data", "Chat"].map((view) => (
+          <button
+            key={view}
+            type="button"
+            className="btn btn-secondary"
+            aria-pressed={workspaceView === view.toLowerCase()}
+            onClick={() => setWorkspaceView(view.toLowerCase())}
+          >
+            {view}
+          </button>
+        ))}
+      </nav>
+
       {/* Left Sidebar Column */}
       <div
+        className={`workspace-projects ${isSidebarOpen ? "" : "panel-collapsed"}`}
         style={{
           position: "relative",
           height: "100%",
           overflow: "hidden",
-          display: isSidebarOpen ? "block" : "none",
         }}
       >
-        <Sidebar />
+        <Sidebar savedActive={activeTab === "saved"} onOpenSaved={() => { setActiveTab("saved"); setWorkspaceView("data"); }} />
         {/* Left Drag Resizer Handle */}
         <div
           className={`sidebar-resizer left ${resizingPanel === "left" ? "active" : ""}`}
@@ -183,18 +195,18 @@ function App() {
 
       {/* Center Main Content Area */}
       <main className="center-panel">
-        <div className="glass-panel" style={{ flex: 1, padding: "20px", minHeight: 0 }}>
-          <DatasetViewer />
+        <div className="workspace-surface">
+          <DatasetViewer onOpenResult={openResult} datasetName={datasetNameLabel} activeTab={activeTab} setActiveTab={setActiveTab} selectedResult={resultByProject[activeProjectId]} />
         </div>
       </main>
 
       {/* Right Chat Panel Column */}
       <div
+        className={`workspace-chat ${isChatOpen ? "" : "panel-collapsed"}`}
         style={{
           position: "relative",
           height: "100%",
           overflow: "hidden",
-          display: isChatOpen ? "block" : "none",
         }}
       >
         {/* Right Drag Resizer Handle */}
@@ -204,7 +216,7 @@ function App() {
           title="Drag to resize AI chat panel"
         />
         <section className="right-panel" style={{ height: "100%" }}>
-          <ChatPanel />
+          <ChatPanel datasetName={activeDataset?.filename} onOpenResult={openResult} />
         </section>
       </div>
     </div>

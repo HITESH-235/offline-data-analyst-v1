@@ -1,20 +1,29 @@
-import React, { createContext, useState, useEffect, useContext } from "react";
+import React, { createContext, useState, useEffect, useContext, useRef } from "react";
 
 const ProjectContext = createContext(null);
 
-const BACKEND_URL = "http://127.0.0.1:8000/api/v1";
+const BACKEND_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
+
+async function loadSavedAnalyses(projectId, signal) {
+    const response = await fetch(`${BACKEND_URL}/projects/${encodeURIComponent(projectId)}/analyses`, { signal });
+    if (!response.ok) throw new Error("Could not load saved analyses.");
+    return response.json();
+}
 
 export const ProjectProvider = ({ children }) => {
   const [projects, setProjects] = useState([]);
-  const [activeProjectId, setActiveProjectId] = useState(null);
-  const [activeProjectName, setActiveProjectName] = useState("");
+  const [activeProjectId, setActiveProjectId] = useState("default");
+  const [activeProjectName, setActiveProjectName] = useState("Default Project");
   const [datasets, setDatasets] = useState([]);
-  const [activeDatasetId, setActiveDatasetId] = useState(null);
+  const [activeDatasetId, setActiveDatasetId] = useState("northwind.db");
   const [activeDatasetPreview, setActiveDatasetPreview] = useState(null);
   const [activeDatasetProfile, setActiveDatasetProfile] = useState(null);
-  const [chatHistory, setChatHistory] = useState([]);
+  const [historyByProject, setHistoryByProject] = useState({});
+  const chatHistory = historyByProject[activeProjectId] ?? [];
+  const datasetRequest = useRef(0);
+  const pendingProjects = useRef(new Set());
   const [isLoading, setIsLoading] = useState(false);
-  const [chatLoading, setChatLoading] = useState(false);
+  const chatLoading = chatHistory.some((message) => message.pending);
 
   // 1. Fetch Projects List
   const loadProjects = async () => {
@@ -23,8 +32,13 @@ export const ProjectProvider = ({ children }) => {
       if (response.ok) {
         const data = await response.json();
         setProjects(data);
-        if (data.length > 0 && !activeProjectId) {
-          selectProject(data[0].id, data[0].name);
+        if (data.length > 0) {
+          if (!activeProjectId) {
+            selectProject(data[0].id, data[0].name);
+          }
+        } else {
+          // Auto-create default project if none exists
+          await createProject("Default Project");
         }
       }
     } catch (error) {
@@ -52,7 +66,6 @@ export const ProjectProvider = ({ children }) => {
   const selectProject = async (id, name) => {
     setActiveProjectId(id);
     setActiveProjectName(name);
-    setChatHistory([]);
     loadCatalogDatasets();
   };
 
@@ -118,65 +131,98 @@ export const ProjectProvider = ({ children }) => {
 
   // 7. Select Catalog Dataset
   const selectDataset = async (datasetId) => {
+    const request = ++datasetRequest.current;
     setActiveDatasetId(datasetId);
+    setActiveDatasetPreview(null);
+    setActiveDatasetProfile(null);
     setIsLoading(true);
     try {
       // Get preview
       const prevResp = await fetch(`${BACKEND_URL}/datasets/${datasetId}/preview`);
       if (prevResp.ok) {
         const prevData = await prevResp.json();
-        setActiveDatasetPreview(prevData);
+        if (request === datasetRequest.current) setActiveDatasetPreview(prevData);
       }
       
       // Get profile
       const profResp = await fetch(`${BACKEND_URL}/datasets/${datasetId}/profile`);
       if (profResp.ok) {
         const profData = await profResp.json();
-        setActiveDatasetProfile(profData);
+        if (request === datasetRequest.current) setActiveDatasetProfile(profData);
       }
     } catch (error) {
       console.error("Load dataset details failed:", error);
     } finally {
-      setIsLoading(false);
+      if (request === datasetRequest.current) setIsLoading(false);
     }
   };
 
   // 8. Post Chat Message
   const sendChatMessage = async (msg) => {
-    if (!activeProjectId || !activeDatasetId) {
-      alert("Please select a project and dataset first.");
-      return;
-    }
-    
-    const userMsgObj = {
-      id: Date.now().toString(),
-      role: "user",
-      content: msg,
-      created_at: new Date().toISOString()
-    };
-    
-    setChatHistory(prev => [...prev, userMsgObj]);
-    setChatLoading(true);
+    const projId = activeProjectId || "default";
+    const dsId = activeDatasetId || "northwind.db";
+    if (pendingProjects.current.has(projId)) return;
+    pendingProjects.current.add(projId);
+
+    const id = crypto.randomUUID();
+    const pendingId = id + "-reply";
+    const startedAt = performance.now();
+    const datasetName = datasets.find((dataset) => dataset.id === dsId)?.filename || dsId;
+    const updateHistory = (update) => setHistoryByProject((previous) => ({
+      ...previous,
+      [projId]: update(previous[projId] ?? []),
+    }));
+    const updateReply = (update) => updateHistory((messages) => messages.map(
+      (message) => message.id === pendingId ? { ...message, ...update } : message
+    ));
+    updateHistory((messages) => [
+      ...messages,
+      { id, role: "user", content: msg },
+      { id: pendingId, role: "assistant", pending: true, startedAt, datasetId: dsId, datasetName, stage: "connecting" },
+    ]);
 
     try {
-      const response = await fetch(`${BACKEND_URL}/chat/message`, {
+      const response = await fetch(`${BACKEND_URL}/chat/message/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: activeProjectId,
-          dataset_id: activeDatasetId,
-          message: msg
-        })
+        body: JSON.stringify({ project_id: projId, dataset_id: dsId, message: msg }),
       });
-      
-      if (response.ok) {
-        const assistantMsg = await response.json();
-        setChatHistory(prev => [...prev, assistantMsg]);
+      if (!response.ok || !response.body) throw new Error("Could not start the analysis.");
+
+      let buffer = "";
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) throw new Error("The connection closed before the analyst finished.");
+          buffer += value;
+          const lines = buffer.split("\n");
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            const event = JSON.parse(line);
+            if (event.stage === "completed" || event.stage === "failed") {
+              const result = event.result ?? {};
+              updateReply({
+                ...result,
+                id: pendingId,
+                content: result.content ?? event.error ?? "The analysis failed.",
+                pending: false,
+                stage: event.stage,
+                elapsedMs: performance.now() - startedAt,
+              });
+              return;
+            }
+            updateReply({ stage: event.stage });
+          }
+        }
+      } finally {
+        await reader.cancel();
       }
     } catch (error) {
-      console.error("Chat message delivery failed:", error);
+      updateReply({ pending: false, stage: "failed", content: error.message, elapsedMs: performance.now() - startedAt });
     } finally {
-      setChatLoading(false);
+      pendingProjects.current.delete(projId);
     }
   };
 
@@ -225,6 +271,7 @@ export const ProjectProvider = ({ children }) => {
       selectProject,
       selectDataset,
       sendChatMessage,
+      loadSavedAnalyses,
       generateReport
     }}>
       {children}
