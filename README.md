@@ -57,7 +57,36 @@ offline-data-analyst/
 
 ---
 
-## Prerequisites
+## Docker Desktop development stack
+
+Start the frontend, backend, and Ollama services:
+
+```bash
+docker --context desktop-linux compose up -d --build
+# For local Ollama inference, pull the model once:
+docker --context desktop-linux compose exec ollama ollama pull qwen2.5-coder:latest
+```
+
+The dashboard is at `http://localhost:3001` and API documentation at
+`http://localhost:8001/docs`. Ollama is reachable within the Compose network.
+The development services mount the source directories for hot reload.
+The Ollama volume currently uses `/home/hit235/.ollama`; change that host path
+when running on another machine.
+
+To use OpenRouter, put `LLM_PROVIDER=openrouter`, `OPENROUTER_API_KEY`, and
+optionally `OPENROUTER_MODEL` in the ignored `.env.openrouter.local` file, then use:
+
+```bash
+docker --context desktop-linux compose --env-file .env.openrouter.local up -d --build
+```
+
+Keep using that env file when recreating services to preserve the provider choice.
+Do not commit API keys or workspace data. OpenRouter sends model requests to an
+external service; the default Ollama provider runs locally.
+
+---
+
+## Prerequisites (Manual Local Setup)
 
 *   Linux (Arch Linux / Ubuntu)
 *   Python 3.10+

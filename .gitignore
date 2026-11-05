@@ -1,6 +1,4 @@
-# Python virtual environments and caches
-venv/
-**/venv/
+# Python caches
 __pycache__/
 **/__pycache__/
 *.py[cod]
@@ -8,12 +6,6 @@ __pycache__/
 .pytest_cache/
 **/.pytest_cache/
 .ipynb_checkpoints/
-
-# Node dependencies and builds
-node_modules/
-**/node_modules/
-dist/
-**/dist/
 
 # Local configuration/env files
 .env
@@ -42,3 +34,10 @@ workspace/
 *.db
 !datasets/northwind.db
 
+# command file
+commands.txt
+
+# Local dependencies and build output
+venv/
+node_modules/
+dist/
