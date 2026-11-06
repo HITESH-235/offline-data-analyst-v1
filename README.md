@@ -8,7 +8,7 @@ It is designed to run 100% offline, leveraging local LLMs (Qwen 2.5 Coder) accel
 
 ## Key Features
 
-*   **Offline LLM Execution**: Uses a local Ollama service running the `qwen2.5-coder:latest` (7.6B) model.
+*   **Offline LLM Execution**: Uses a local Ollama service running the `qwen2.5-coder:7b` (7.6B) model.
 *   **Decoupled Workspaces**: User files, database states, chat history, and reports are isolated inside a dedicated `workspace/` folder completely separate from the application source code.
 *   **Dual-Route Analysis Engine**:
     *   **Simple Intent**: Converts natural language requests into deterministic pandas/numpy aggregates, descriptive statistics, and correlation matrices.
@@ -64,7 +64,7 @@ Start the frontend, backend, and Ollama services:
 ```bash
 docker --context desktop-linux compose up -d --build
 # For local Ollama inference, pull the model once:
-docker --context desktop-linux compose exec ollama ollama pull qwen2.5-coder:latest
+docker --context desktop-linux compose exec ollama ollama pull qwen2.5-coder:7b
 ```
 
 The dashboard is at `http://localhost:3001` and API documentation at
@@ -73,16 +73,10 @@ The development services mount the source directories for hot reload.
 The Ollama volume currently uses `/home/hit235/.ollama`; change that host path
 when running on another machine.
 
-To use OpenRouter, put `LLM_PROVIDER=openrouter`, `OPENROUTER_API_KEY`, and
-optionally `OPENROUTER_MODEL` in the ignored `.env.openrouter.local` file, then use:
-
-```bash
-docker --context desktop-linux compose --env-file .env.openrouter.local up -d --build
-```
-
-Keep using that env file when recreating services to preserve the provider choice.
-Do not commit API keys or workspace data. OpenRouter sends model requests to an
-external service; the default Ollama provider runs locally.
+All model requests go to **local Qwen 2.5 Coder 7B through Ollama**.
+No API key or hosted inference service is required. After downloading the model
+and installing dependencies, analysis and chart rendering work offline.
+Your datasets, chats, generated charts, and reports stay in the local workspace.
 
 ---
 
@@ -130,7 +124,7 @@ sudo docker run -d \
 Pull the model inside the container to verify it is compiled for GPU inference:
 
 ```bash
-sudo docker exec -it ollama-intel /ollama pull qwen2.5-coder:latest
+sudo docker exec -it ollama-intel /ollama pull qwen2.5-coder:7b
 ```
 
 ---

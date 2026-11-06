@@ -12,7 +12,7 @@
 #      podman-compose down
 #
 # 3. First-time model pull (one-time setup):
-#      podman exec -it ollama ollama pull qwen2.5-coder:latest
+#      podman exec -it ollama ollama pull qwen2.5-coder:7b
 # ============================================================
 
 version: '3.8'
@@ -50,10 +50,7 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=qwen2.5-coder:latest
-      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-nvidia/nemotron-3.5-super-vl:free}
+      - OLLAMA_MODEL=qwen2.5-coder:7b
       - WORKSPACE_DIR=/app/workspace
       - DATASETS_DIR=/app/datasets
       - METADATA_DB_URL=sqlite:////app/workspace/metadata.db

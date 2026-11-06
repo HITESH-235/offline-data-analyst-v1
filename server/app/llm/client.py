@@ -9,44 +9,11 @@ logger = logging.getLogger(__name__)
 
 class OllamaClient:
     @staticmethod
-    def _openrouter_chat(messages, json_format: bool) -> str:
-        key = settings.OPENROUTER_API_KEY.get_secret_value()
-        if not key:
-            raise RuntimeError("OPENROUTER_API_KEY is required for OpenRouter.")
-        payload = {"model": settings.OPENROUTER_MODEL, "messages": messages}
-        if json_format:
-            payload["response_format"] = {"type": "json_object"}
-        request = urllib.request.Request(
-            "https://openrouter.ai/api/v1/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=120) as response:
-                result = json.load(response)
-        except urllib.error.HTTPError as error:
-            raise RuntimeError(f"OpenRouter returned HTTP {error.code}.") from None
-        except (urllib.error.URLError, TimeoutError):
-            raise ConnectionError("Could not reach OpenRouter or the request timed out.") from None
-
-        choices = result.get("choices") or []
-        content = choices[0].get("message", {}).get("content") if choices else None
-        if not isinstance(content, str) or not content.strip():
-            raise RuntimeError("OpenRouter returned no usable model response.")
-        return content
-
-    @staticmethod
     def call_model(prompt: str, system_prompt: Optional[str] = None, json_format: bool = False) -> str:
         """
         Single-shot text generation using /api/generate.
         Used by the Planner and Interpreter (no conversation history needed).
         """
-        if settings.LLM_PROVIDER == "openrouter":
-            messages = [{"role": "system", "content": system_prompt}] if system_prompt else []
-            messages.append({"role": "user", "content": prompt})
-            return OllamaClient._openrouter_chat(messages, json_format)
-
         url = f"{settings.OLLAMA_BASE_URL}/api/generate"
         
         payload = {
@@ -92,9 +59,6 @@ class OllamaClient:
 
         messages format: [{"role": "system"|"user"|"assistant", "content": "..."}]
         """
-        if settings.LLM_PROVIDER == "openrouter":
-            return OllamaClient._openrouter_chat(messages, json_format)
-
         url = f"{settings.OLLAMA_BASE_URL}/api/chat"
 
         payload = {
