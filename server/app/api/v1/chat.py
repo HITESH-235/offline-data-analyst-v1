@@ -72,6 +72,18 @@ def process_chat_message(request, db, emit):
     project_id = request.project_id
     user_msg = request.message
 
+    from app.services.project_service import ProjectService
+    if not ProjectService.get_project(db, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Whole-database analysis needs a database-level context; table profiles
+    # currently support only concrete table selections.
+    if "::" not in dataset_id and dataset_id.lower().endswith((".db", ".sqlite")):
+        raise HTTPException(
+            status_code=400,
+            detail="Analysis of a whole database is not supported yet. Select a table under the database in the sidebar, then ask your question. You can still ask to join it with other tables."
+        )
+
     # --- Step 1: Validate dataset and profile exist ---
     db_dataset = DatasetManager.get_dataset(db, dataset_id=dataset_id)
     if not db_dataset:
@@ -94,15 +106,12 @@ def process_chat_message(request, db, emit):
     db.commit()
 
     emit("classifying")
-    # --- Step 3: Classify intent ---
+    # Classification and table-selection failures terminate this request.
+    # Never turn an unavailable model into a new conversation-mode model call.
+    intent = None
     try:
         plan_response = QueryPlanner.plan_query(user_msg, profile)
-        intent = plan_response.get("intent", "CONVERSATION")
-    except Exception:
-        intent = "CONVERSATION"
-
-    # --- Step 4: Run the agent loop ---
-    try:
+        intent = plan_response["intent"]
         agent_result = Agent.run(
             user_query=user_msg,
             intent=intent,
@@ -116,7 +125,7 @@ def process_chat_message(request, db, emit):
     except Exception as e:
         agent_result = {
             "failed": True,
-            "content": f"Agent encountered an error: {e}",
+            "content": f"Analysis stopped: {e}",
             "type": "text",
         }
 
@@ -134,6 +143,8 @@ def process_chat_message(request, db, emit):
         metadata["results"] = agent_result["results"]
     if agent_result.get("code"):
         metadata["code"] = agent_result["code"]
+    if agent_result.get("artifacts"):
+        metadata["artifacts"] = agent_result["artifacts"]
     if agent_result.get("chart_base64"):
         metadata["chart_base64"] = agent_result["chart_base64"]
 
@@ -150,6 +161,7 @@ def process_chat_message(request, db, emit):
 
     return {
         "id": assistant_id,
+        "question": user_msg,
         "role": "assistant",
         "content": content,
         "type": msg_type,

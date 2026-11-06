@@ -112,6 +112,7 @@ class SandboxRunner:
             # preexec_fn sets resource limits in the subprocess (Linux only)
             result = subprocess.run(
                 cmd,
+                cwd=temp_dir,
                 capture_output=True,
                 text=True,
                 timeout=SANDBOX_TIMEOUT_SECONDS,
@@ -122,7 +123,6 @@ class SandboxRunner:
             stdout = ""
             error = ""
             variables = {}
-            chart_path = None
             
             stdout_file = os.path.join(temp_dir, "stdout.txt")
             if os.path.exists(stdout_file):
@@ -146,30 +146,9 @@ class SandboxRunner:
                 except Exception:
                     pass
                     
-            # Check if output image or HTML chart was created
-            temp_chart_png = os.path.join(temp_dir, "output_chart.png")
-            temp_chart_html = os.path.join(temp_dir, "output_chart.html")
-            
-            detected_chart = None
-            if os.path.exists(temp_chart_html):
-                detected_chart = temp_chart_html
-            elif os.path.exists(temp_chart_png):
-                detected_chart = temp_chart_png
+            from app.services.chart_artifacts import persist_captures
+            artifacts = persist_captures(temp_dir, project_id) if not error and result.returncode == 0 else []
 
-            if detected_chart:
-                chart_path = detected_chart
-                # Copy chart to project workspace directory if project_id provided
-                if project_id:
-                    try:
-                        project_charts_dir = os.path.join(settings.WORKSPACE_DIR, "projects", project_id, "charts")
-                        os.makedirs(project_charts_dir, exist_ok=True)
-                        chart_filename = os.path.basename(detected_chart)
-                        dest_chart_path = os.path.join(project_charts_dir, chart_filename)
-                        shutil.copy2(detected_chart, dest_chart_path)
-                        chart_path = dest_chart_path
-                    except Exception as copy_err:
-                        logger.error(f"Failed to copy chart to project directory: {copy_err}")
-                
             success = len(error) == 0 and result.returncode == 0
             
             return {
@@ -178,7 +157,7 @@ class SandboxRunner:
                 "error": error if error else None,
                 "variables": variables,
                 "temp_dir": temp_dir,  # Return temp dir so caller can clean up
-                "chart_path": chart_path
+                "artifacts": artifacts
             }
 
         except subprocess.TimeoutExpired:

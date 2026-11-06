@@ -9,6 +9,7 @@ Flow:
 """
 
 import json
+import ast
 import logging
 from typing import Dict, Any, Optional
 from app.services.dataset_manager import DatasetManager
@@ -64,7 +65,7 @@ class Agent:
           - type: "text" | "table" | "code"
           - results: (optional) raw data from tool execution
           - code: (optional) generated code for COMPLEX
-          - chart_base64: (optional) chart image
+          - artifacts: typed, persisted chart references
         """
 
         # --- 0. Table Selection Step (Pre-query routing) ---
@@ -77,6 +78,7 @@ class Agent:
         join_keys = selection.get("join_keys", []) if len(selected_tables) > 1 else []
         source = {"tables": selected_tables, "join_keys": join_keys}
         steps = []
+        failed_calls = {}
         dataframe = None
         try:
             if len(selected_tables) > 1 or (
@@ -103,9 +105,21 @@ class Agent:
             targeted_profiles = [profile]
 
         # Combine schema descriptions for selected tables
-        schema_desc = "\n\n".join([_format_schema(p) for p in targeted_profiles])
         if dataframe is not None:
-            schema_desc += "\n\nUse these exact dataframe column names: " + json.dumps(list(dataframe.columns))
+            # Describe the actual Python input, not separate pre-join schemas.
+            schema_desc = (
+                "PYTHON INPUT CONTRACT: `df` is already prepared by the backend.\n"
+                + ("The requested tables have ALREADY BEEN JOINED. Do not join them again or merge df with a slice of itself.\n" if len(selected_tables) > 1 else "The selected table is already loaded.\n")
+                + "Source tables: " + json.dumps(selected_tables)
+                + "\nApplied join keys: " + json.dumps(join_keys)
+                + f"\nInput rows: {len(dataframe)}. Preserve individual observations for distribution/box plots."
+                + "\nUse these exact dataframe column names and types: "
+                + json.dumps({column: str(dtype) for column, dtype in dataframe.dtypes.items()})
+            )
+            if {'CategoryName', 'UnitPrice'}.issubset(dataframe.columns):
+                schema_desc += "\nFor a product-price box plot, use px.box(df, x='CategoryName', y='UnitPrice') directly; each row is already a joined observation."
+        else:
+            schema_desc = "\n\n".join([_format_schema(p) for p in targeted_profiles])
         tool_prompt = TOOL_PROMPTS.get(intent, CONVERSATION_TOOLS_PROMPT)
 
         system_prompt = AGENT_SYSTEM_TEMPLATE.format(
@@ -123,7 +137,7 @@ class Agent:
         # Track results across turns
         last_results = None
         last_code = None
-        last_chart_base64 = None
+        last_artifacts = []
         response_type = "text"
 
         # --- 3. Agent loop ---
@@ -133,7 +147,14 @@ class Agent:
             logger.info(f"Agent turn {turn + 1}/{max_turns} | intent={intent}")
 
             # Call LLM with full message history
-            raw_response = OllamaClient.call_model_chat(messages, json_format=True)
+            try:
+                raw_response = OllamaClient.call_model_chat(messages, json_format=True)
+            except Exception:
+                if last_artifacts and steps and steps[-1]["status"] == "succeeded":
+                    return {"content": "The chart was generated successfully. The model could not prepare the final explanation; open the captured result below.",
+                            "type": "chart", "artifacts": last_artifacts, "results": last_results,
+                            "calculation": {"steps": steps}, "code": last_code}
+                raise
             logger.debug(f"Agent raw response: {raw_response}")
 
             # Parse the LLM's JSON response
@@ -146,7 +167,7 @@ class Agent:
                 return {
                     "content": raw_response,
                     "calculation": {"steps": steps} if steps else None,
-                    "type": "text",
+                    "type": response_type, "results": last_results, "artifacts": last_artifacts,
                 }
 
             # --- 4. Handle the action ---
@@ -161,7 +182,7 @@ class Agent:
                     "results": last_results,
                     "calculation": {"steps": steps} if steps else None,
                     "code": last_code,
-                    "chart_base64": last_chart_base64,
+                    "artifacts": last_artifacts,
                 }
 
             # Case B: Agent wants to call a tool
@@ -177,6 +198,15 @@ class Agent:
                     messages.append({"role": "user", "content": observation})
                     continue
 
+                fingerprint = _tool_fingerprint(tool_name, parameters)
+                if fingerprint in failed_calls:
+                    error = ("The model repeated a previously failed tool call without correcting it. "
+                             "The duplicate was not executed. Original error: " + failed_calls[fingerprint])
+                    steps.append({"tool": tool_name, "parameters": parameters, "status": "failed",
+                                  "execution_skipped": True, "error": error, **source})
+                    return {"failed": True, "type": "text", "content": "I could not complete the calculation. " + error,
+                            "calculation": {"steps": steps}}
+
                 # Execute the tool and get the observation
                 emit("running_tool")
                 observation, tool_results = _execute_tool(
@@ -191,6 +221,7 @@ class Agent:
                 }
                 if tool_results is None:
                     step["error"] = observation
+                    failed_calls[fingerprint] = observation
                 steps.append(step)
 
                 # Track results for the response
@@ -199,7 +230,7 @@ class Agent:
                         emit("preparing_answer")
                     if tool_name == "run_code":
                         last_code = parameters.get("code", "")
-                        last_chart_base64 = tool_results.get("chart_base64")
+                        last_artifacts.extend(tool_results.get("artifacts", []))
                         response_type = "code"
                     else:
                         last_results = tool_results
@@ -207,7 +238,7 @@ class Agent:
 
                 # Add this exchange to message history so agent sees what happened
                 messages.append({"role": "assistant", "content": raw_response})
-                messages.append({"role": "user", "content": f"OBSERVATION:\n{observation}"})
+                messages.append({"role": "user", "content": f"OBSERVATION:\n{observation}" + ("\nThe tool failed. Correct the cause before retrying; identical failed calls will not run again. The input df is unchanged between calls; use its exact supplied schema." if tool_results is None else "")})
                 continue
 
             # Case C: Unknown action — ask agent to try again
@@ -230,13 +261,24 @@ class Agent:
             "type": response_type,
             "results": last_results,
             "code": last_code,
-            "chart_base64": last_chart_base64,
+            "artifacts": last_artifacts,
         }
 
 
 # ============================================================
 # Helper: format schema for the prompt
 # ============================================================
+
+def _tool_fingerprint(tool_name, parameters):
+    """Ignore formatting/comments when recognizing an unchanged failed program."""
+    normalized = dict(parameters)
+    if tool_name == 'run_code' and isinstance(parameters.get('code'), str):
+        try:
+            normalized['code'] = ast.dump(ast.parse(parameters['code']), include_attributes=False)
+        except SyntaxError:
+            normalized['code'] = parameters['code'].strip()
+    return tool_name, json.dumps(normalized, sort_keys=True, default=str)
+
 
 def _format_schema(profile: Dict[str, Any]) -> str:
     """Turn dataset profile into a readable schema string."""
@@ -304,8 +346,6 @@ def _execute_tool(
     # --- COMPLEX tool: use SandboxRunner ---
     if tool_name == "run_code":
         try:
-            import os
-            import base64
             from app.sandbox.runner import SandboxRunner
             from app.services.dataset_manager import DatasetManager
 
@@ -316,27 +356,20 @@ def _execute_tool(
 
             run_result = SandboxRunner.run_code(dataset_id=dataset_id, python_code=code, project_id=project_id, dataframe=dataframe)
 
-            # Read chart if generated
-            chart_base64 = None
-            if run_result.get("chart_path") and os.path.exists(run_result["chart_path"]):
-                try:
-                    with open(run_result["chart_path"], "rb") as f:
-                        chart_base64 = base64.b64encode(f.read()).decode("utf-8")
-                except Exception:
-                    pass
-
             SandboxRunner.cleanup(run_result)
 
             if run_result.get("success"):
                 stdout = run_result.get("stdout", "")
                 variables = run_result.get("variables", {})
                 observation = f"Code executed successfully.\nOutput:\n{stdout}"
+                if run_result.get("artifacts"):
+                    observation += f"\nCaptured {len(run_result['artifacts'])} chart artifacts. They are persisted and available through Open result."
                 if variables:
                     observation += f"\nVariables: {json.dumps(variables, indent=2)}"
                 return observation, {
                     "stdout": stdout,
                     "variables": variables,
-                    "chart_base64": chart_base64,
+                    "artifacts": run_result.get("artifacts", []),
                 }
             else:
                 error = run_result.get("error", "Unknown error")

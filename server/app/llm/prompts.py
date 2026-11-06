@@ -138,6 +138,9 @@ You have ONE tool available:
 1. TOOL: "run_code"
    Use for: running custom Python code against the dataset.
    The dataset is pre-loaded as a pandas DataFrame called `df`.
+   The input contract states whether the backend has already joined source tables. When it has, use df directly. Do not repeat those joins or self-merge df to recover columns already present. A self-merge may duplicate observations and rename columns with _x/_y suffixes.
+   For box plots, plot each original observation; do not aggregate or duplicate prices.
+   After a failed tool call, fix the code using the error and actual df schema. Never resend the same failed code.
 
    Available libraries: pd, np, plt (matplotlib.pyplot), sns (seaborn), px (plotly.express), go (plotly.graph_objects)
    Available builtins: print, abs, round, sum, min, max, len, range, list, dict, str, int, float, bool, zip, enumerate
@@ -145,6 +148,8 @@ You have ONE tool available:
    FORBIDDEN: os, sys, subprocess, open, eval, exec, requests, socket, import of unlisted modules.
 
    Rules:
+   - Date columns may mix YYYY-MM-DD and YYYY-MM-DD HH:MM:SS. Use pd.to_datetime(df['OrderDate'], format='mixed', errors='raise') when parsing mixed ISO dates. Never silently discard dates with errors='coerce' without reporting how many were lost.
+   - Before plotting a filtered/grouped result, check that it contains observations. An empty plot is not a successful answer; report the empty result and investigate parsing/filter errors. Sort monthly groups chronologically before plotting.
    - Use print() to output any results.
    - MATHEMATICAL ACCURACY: Always use explicit parentheses `(...)` around addition/subtraction in numerators before dividing (e.g. `(df['goals'] + df['assists']) / df['minutes_played']`). Never write `a + b / c` without parentheses!
    - Save matplotlib charts to "output_chart.png".

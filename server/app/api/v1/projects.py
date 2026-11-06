@@ -71,15 +71,16 @@ def list_saved_analyses(project_id: str, db: Session = Depends(get_db)):
         if not isinstance(metadata, dict):
             continue
         result = metadata.get("results")
-        if not isinstance(result, dict) or not result.get("columns") or not isinstance(result.get("data"), list):
+        artifacts = metadata.get("artifacts", [])
+        if not artifacts and (not isinstance(result, dict) or not result.get("columns") or not isinstance(result.get("data"), list)):
             continue
         calculation = metadata.get("calculation") or {}
         step = next((
             step for step in reversed(calculation.get("steps", []))
-            if step.get("status") == "succeeded" and step.get("tool") != "run_code"
+            if step.get("status") == "succeeded" and (artifacts or step.get("tool") != "run_code")
         ), {})
         # Legacy statistics responses included the input rows, not a result table.
-        if step.get("tool") == "statistics" and step.get("parameters", {}).get("return_table") is not True:
+        if not artifacts and step.get("tool") == "statistics" and step.get("parameters", {}).get("return_table") is not True:
             continue
         snapshots.append({
             "id": message.id,
@@ -87,7 +88,92 @@ def list_saved_analyses(project_id: str, db: Session = Depends(get_db)):
             "question": metadata.get("question"),
             "saved_at": message.created_at.isoformat() + "Z" if message.created_at else None,
             "result": result,
+            "artifacts": artifacts,
             "tables": step.get("tables", []),
             "calculation": calculation,
         })
     return snapshots
+
+
+@router.delete("/{project_id}/analyses/{analysis_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_saved_analysis(project_id: str, analysis_id: str, db: Session = Depends(get_db)):
+    from app.services.chart_artifacts import stage_artifact_deletion
+    message = db.query(DBChatHistory.id, func.json_extract(DBChatHistory.metadata_json, '$.artifacts').label('artifacts')).filter(
+        DBChatHistory.project_id == project_id, DBChatHistory.id == analysis_id,
+        DBChatHistory.role == "assistant", func.json_valid(DBChatHistory.metadata_json) == 1,
+    ).first()
+    if not message:
+        raise HTTPException(status_code=404, detail="Saved analysis not found")
+
+    def artifact_ids(raw):
+        try:
+            values = json.loads(raw or '[]')
+        except (ValueError, TypeError):
+            return set()
+        return {item['id'] for item in values if isinstance(item, dict) and isinstance(item.get('id'), str)} if isinstance(values, list) else set()
+
+    owned = artifact_ids(message.artifacts)
+    # Keep artifacts still referenced by another saved analysis in this project.
+    others = db.query(func.json_extract(DBChatHistory.metadata_json, '$.artifacts')).filter(
+        DBChatHistory.project_id == project_id, DBChatHistory.id != analysis_id,
+        func.json_valid(DBChatHistory.metadata_json) == 1,
+    ).all()
+    referenced = set().union(*(artifact_ids(row[0]) for row in others)) if others else set()
+    try:
+        with stage_artifact_deletion(project_id, owned - referenced):
+            db.query(DBChatHistory).filter(DBChatHistory.id == analysis_id, DBChatHistory.project_id == project_id).update({
+                DBChatHistory.metadata_json: func.json_set(
+                    func.json_remove(DBChatHistory.metadata_json, '$.results', '$.chart_base64', '$.artifacts'),
+                    '$.analysis_deleted', True)
+            }, synchronize_session=False)
+            db.commit()
+    except OSError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Could not remove the analysis chart files. Please try again.")
+    except Exception:
+        db.rollback()
+        raise
+    return None
+
+
+@router.get("/{project_id}/messages")
+def list_project_messages(project_id: str, before: str = None, db: Session = Depends(get_db)):
+    from sqlalchemy import and_, or_
+    safe_metadata = case((func.length(DBChatHistory.metadata_json) <= 8 * 1024 * 1024,
+                          DBChatHistory.metadata_json), else_=None).label('metadata')
+    query = db.query(DBChatHistory.id, DBChatHistory.role, DBChatHistory.content,
+                     DBChatHistory.created_at, safe_metadata).filter(DBChatHistory.project_id == project_id)
+    if before:
+        cursor = db.query(DBChatHistory.id, DBChatHistory.created_at).filter(DBChatHistory.id == before, DBChatHistory.project_id == project_id).first()
+        if not cursor:
+            raise HTTPException(status_code=404, detail="Chat history cursor not found")
+        query = query.filter(or_(DBChatHistory.created_at < cursor.created_at,
+                                and_(DBChatHistory.created_at == cursor.created_at, DBChatHistory.id < cursor.id)))
+    rows = query.order_by(DBChatHistory.created_at.desc(), DBChatHistory.id.desc()).limit(51).all()
+    page = rows[:50]
+    return {"messages": [{"id": row.id, "role": row.role, "content": row.content,
+                          "created_at": row.created_at.isoformat() + 'Z', "metadata_json": row.metadata}
+                         for row in reversed(page)],
+            "has_more": len(rows) > 50, "before": page[-1].id if page else None}
+
+
+@router.get("/{project_id}/artifacts/{artifact_id}/{role}")
+def read_chart_artifact(project_id: str, artifact_id: str, role: str, db: Session = Depends(get_db)):
+    from fastapi.responses import FileResponse
+    from app.services.chart_artifacts import artifact_file
+    if role not in ('figure', 'image', 'download') or not ProjectService.get_project(db, project_id):
+        raise HTTPException(status_code=404, detail="Chart artifact not found")
+    try:
+        path, metadata = artifact_file(project_id, artifact_id, role)
+    except (FileNotFoundError, ValueError):
+        raise HTTPException(status_code=404, detail="Chart artifact not found")
+    if role == 'figure':
+        if metadata['kind'] != 'plotly':
+            raise HTTPException(status_code=404, detail="Figure data unavailable")
+        return FileResponse(path, media_type='application/json', headers={'X-Content-Type-Options': 'nosniff'})
+    if role == 'image' and metadata['kind'] == 'png':
+        return FileResponse(path, media_type='image/png', headers={'X-Content-Type-Options': 'nosniff'})
+    if role == 'image':
+        raise HTTPException(status_code=404, detail="Image unavailable")
+    return FileResponse(path, media_type='application/octet-stream', filename=path.name,
+                        headers={'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "sandbox", 'Access-Control-Expose-Headers': 'Content-Disposition'})

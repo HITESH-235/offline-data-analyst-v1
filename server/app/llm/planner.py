@@ -34,26 +34,18 @@ class QueryPlanner:
         
         logger.info(f"Classifying query intent: '{user_query}'")
         
+        # Provider errors propagate: they must never become a conversation request.
+        raw_response = OllamaClient.call_model(
+            prompt=prompt, system_prompt=PLANNER_SYSTEM_PROMPT, json_format=True
+        )
         try:
-            # Request JSON response from Ollama
-            raw_response = OllamaClient.call_model(
-                prompt=prompt,
-                system_prompt=PLANNER_SYSTEM_PROMPT,
-                json_format=True
-            )
-            logger.debug(f"Planner raw output: {raw_response}")
-            
-            # Parse response
             plan = json.loads(raw_response)
-            return plan
-        except Exception as e:
-            logger.error(f"Failed to parse planner output or make connection: {e}")
-            # Fallback to CONVERSATION mode
-            return {
-                "intent": "CONVERSATION",
-                "reasoning": f"Fallback triggered due to planner parsing failure: {e}",
-                "operation": {"type": None, "parameters": {}}
-            }
+        except (json.JSONDecodeError, TypeError):
+            raise ValueError("The model returned an invalid query plan. The analysis stopped.") from None
+        if not isinstance(plan, dict) or plan.get("intent") not in {"SIMPLE", "COMPLEX", "CONVERSATION"}:
+            raise ValueError("The model returned an unsupported query intent. The analysis stopped.")
+        return plan
+
 class CodeGenerator:
     @staticmethod
     def generate_code(user_query: str, profile: Dict[str, Any]) -> str:

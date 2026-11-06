@@ -42,25 +42,16 @@ class TableSelector:
 
         logger.info(f"Selecting required tables for query: '{user_query}'")
 
+        raw_response = OllamaClient.call_model(
+            prompt=user_prompt, system_prompt=TABLE_SELECTOR_SYSTEM_PROMPT, json_format=True
+        )
         try:
-            raw_response = OllamaClient.call_model(
-                prompt=user_prompt,
-                system_prompt=TABLE_SELECTOR_SYSTEM_PROMPT,
-                json_format=True
-            )
-            logger.debug(f"TableSelector raw output: {raw_response}")
             selection = json.loads(raw_response)
-            
-            # Ensure active_dataset_id is included if tables_needed is empty or missing
-            tables_needed = selection.get("tables_needed", [])
-            if not isinstance(tables_needed, list) or len(tables_needed) == 0:
-                selection["tables_needed"] = [active_dataset_id]
-                
-            return selection
-        except Exception as e:
-            logger.error(f"TableSelector failed or connection error: {e}. Defaulting to active dataset.")
-            return {
-                "tables_needed": [active_dataset_id],
-                "join_keys": [],
-                "reasoning": f"Fallback to active dataset due to TableSelector error: {e}"
-            }
+        except (json.JSONDecodeError, TypeError):
+            raise ValueError("The model returned invalid table selection. The analysis stopped.") from None
+        if not isinstance(selection, dict):
+            raise ValueError("The model returned invalid table selection. The analysis stopped.")
+        tables = selection.get("tables_needed", [])
+        if not isinstance(tables, list) or not tables or not all(isinstance(table, str) and table for table in tables):
+            raise ValueError("The model did not select valid tables. The analysis stopped.")
+        return selection

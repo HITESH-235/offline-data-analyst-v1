@@ -77,16 +77,17 @@ class ChartEngine:
             logger.error(f"Plotly generation failed: {e}")
             raise ValueError(f"Plotly generation failed: {e}")
             
-        # Customize styling for dark mode
+        # Match the Result workspace palette for standalone offline artifacts
         fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="rgba(30, 30, 30, 0.5)",
-            plot_bgcolor="rgba(30, 30, 30, 0.5)",
-            font=dict(family="Inter, sans-serif", size=12)
+            template="plotly_white",
+            paper_bgcolor="#FFFFFF",
+            plot_bgcolor="#FFFFFF",
+            font=dict(family="system-ui, sans-serif", size=12, color="#14212B"),
+            colorway=["#007D73", "#14212B", "#975437"]
         )
         
         # Save HTML file inside project workspace
-        project_dir = get_project_dir(project.name)
+        project_dir = get_project_dir(project.id)
         charts_dir = os.path.join(project_dir, "charts")
         os.makedirs(charts_dir, exist_ok=True)
         

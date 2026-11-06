@@ -44,10 +44,35 @@ def run_isolated(data_path: str, code_content: str, output_dir: str):
     # 3. Restricted execution scope
     # Whitelist of modules/builtins available inside exec context
     import numpy as np
+    import matplotlib
+    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import seaborn as sns
     import plotly.express as px
     import plotly.graph_objects as go
+
+    plt.rcParams.update({'figure.figsize': (11, 6), 'figure.dpi': 120, 'savefig.dpi': 180,
+                         'figure.facecolor': 'white', 'axes.facecolor': 'white',
+                         'text.color': '#14212B', 'axes.labelcolor': '#14212B',
+                         'xtick.color': '#14212B', 'ytick.color': '#14212B',
+                         'axes.prop_cycle': matplotlib.cycler(color=['#007D73', '#14212B', '#52616A']),
+                         'font.size': 11, 'axes.spines.top': False, 'axes.spines.right': False})
+    import plotly.io as pio
+    palette = ['#007D73', '#14212B', '#637F8D', '#9A613C', '#69865B']
+    pio.templates['analyst'] = go.layout.Template(layout={'colorway': palette, 'paper_bgcolor': '#FFFFFF',
+        'plot_bgcolor': '#FFFFFF', 'font': {'family': 'system-ui, sans-serif', 'size': 12, 'color': '#14212B'}})
+    pio.templates.default = 'analyst'
+    px.defaults.template = 'analyst'
+    px.defaults.color_discrete_sequence = palette
+    from plotly.basedatatypes import BaseFigure
+    captured_figures = []
+    original_write_html = BaseFigure.write_html
+    def capture_html(figure, file, *args, **kwargs):
+        captured_figures.append(figure)
+        kwargs['include_plotlyjs'] = True
+        return original_write_html(figure, os.path.join(output_dir, os.path.basename(str(file))), **kwargs)
+    BaseFigure.write_html = capture_html
+    BaseFigure.show = lambda figure, *args, **kwargs: captured_figures.append(figure)
 
     # Override plt.show with a no-op to prevent GUI window hangs in sandbox
     plt.show = lambda *args, **kwargs: None
@@ -74,26 +99,72 @@ def run_isolated(data_path: str, code_content: str, output_dir: str):
         # Run code
         exec(code_content, exec_globals)
         
-        # 1. Capture Plotly figures if generated
-        try:
-            for var_name, var_val in exec_globals.items():
-                if var_name in ["px", "go", "pio", "plt", "sns", "pd", "np"]:
-                    continue
-                if isinstance(var_val, go.Figure) or type(var_val).__name__ == "Figure":
-                    plotly_html_path = os.path.join(output_dir, "output_chart.html")
-                    var_val.write_html(plotly_html_path, include_plotlyjs="cdn")
-                    break
-        except Exception as plotly_err:
-            stdout_buffer.write(f"\n[Warning: Failed to capture Plotly chart: {plotly_err}]")
+        captures = []
+        figures = captured_figures + [value for value in exec_globals.values() if isinstance(value, BaseFigure)]
+        seen = set()
+        for index, figure in enumerate(figures):
+            if id(figure) in seen:
+                continue
+            seen.add(id(figure))
+            entry = {'kind': 'plotly', 'title': figure.layout.title.text or 'Generated chart', 'status': 'ready'}
+            try:
+                figure_name = f'figure_{index}.json'
+                figure.write_json(os.path.join(output_dir, figure_name))
+                entry['figure'] = figure_name
+                point_types = {'scatter', 'scattergl', 'bar', 'histogram', 'box', 'violin'}
+                empty_points = bool(figure.data) and all(
+                    trace.type in point_types and all(getattr(trace, key, None) is None or len(getattr(trace, key)) == 0
+                                                     for key in ('x', 'y', 'q1', 'median', 'q3'))
+                    for trace in figure.data
+                )
+                if not figure.data or empty_points:
+                    entry.update(status='empty', reason='The Python figure contains no plotted observations. Check filters and date parsing before treating it as an answer.')
+            except Exception as capture_error:
+                entry.update(status='download_only', reason=f'Figure capture failed: {capture_error}')
+            try:
+                export = f'figure_{index}.html'
+                original_write_html(figure, os.path.join(output_dir, export), include_plotlyjs=True, full_html=True)
+                entry['download'] = export
+            except Exception as export_error:
+                stdout_buffer.write(f'Chart export failed: {export_error}')
+            captures.append(entry)
 
-        # 2. Save active matplotlib figure if generated
-        try:
-            if plt.get_fignums():
-                chart_path = os.path.join(output_dir, "output_chart.png")
-                plt.savefig(chart_path, bbox_inches="tight", dpi=150)
-                plt.close("all")
-        except Exception as plot_err:
-            stdout_buffer.write(f"\n[Warning: Failed to capture Matplotlib plot: {plot_err}]")
+        for number in plt.get_fignums():
+            figure = plt.figure(number)
+            if not figure.axes:
+                continue
+            filename = f'matplotlib_{number}.png'
+            try:
+                figure.tight_layout()
+                figure.savefig(os.path.join(output_dir, filename), bbox_inches='tight', dpi=max(180, figure.dpi))
+                from PIL import Image
+                with Image.open(os.path.join(output_dir, filename)) as image:
+                    image_width, image_height = image.size
+                captures.append({'kind': 'png', 'title': figure._suptitle.get_text() if figure._suptitle else figure.axes[0].get_title() or 'Generated image',
+                                 'status': 'ready', 'download': filename,
+                                 'width': image_width, 'height': image_height})
+            except Exception as capture_error:
+                stdout_buffer.write(f'PNG capture failed: {capture_error}')
+        plt.close('all')
+        # Handle explicitly saved PNGs even when the original figure was closed.
+        if not any(item['kind'] == 'png' for item in captures):
+            from PIL import Image
+            for filename in os.listdir(output_dir):
+                if not filename.endswith('.png'):
+                    continue
+                path = os.path.join(output_dir, filename)
+                with open(path, 'rb') as image:
+                    valid_png = image.read(8) == bytes.fromhex('89504e470d0a1a0a')
+                if valid_png:
+                    with Image.open(path) as image:
+                        image_width, image_height = image.size
+                    captures.append({'kind': 'png', 'title': 'Generated image', 'status': 'ready',
+                                     'download': filename, 'width': image_width, 'height': image_height})
+        if not captures and os.path.isfile(os.path.join(output_dir, 'output_chart.html')):
+            captures.append({'kind': 'html', 'title': 'Generated HTML chart', 'status': 'download_only',
+                             'reason': 'No structured figure was captured. Download the HTML to inspect it separately.', 'download': 'output_chart.html'})
+        with open(os.path.join(output_dir, 'captures.json'), 'w') as manifest:
+            json.dump(captures, manifest)
             
     except Exception as e:
         error_occurred = str(e)
