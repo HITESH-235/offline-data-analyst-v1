@@ -10,9 +10,16 @@ async function loadSavedAnalyses(projectId, signal) {
     return response.json();
 }
 
+async function loadChatHistory(projectId, before, signal) {
+  const suffix = before ? `?before=${encodeURIComponent(before)}` : '';
+  const response = await fetch(`${BACKEND_URL}/projects/${encodeURIComponent(projectId)}/messages${suffix}`, { signal });
+  if (!response.ok) throw new Error("Could not load past chats.");
+  return response.json();
+}
+
 export const ProjectProvider = ({ children }) => {
   const [projects, setProjects] = useState([]);
-  const [activeProjectId, setActiveProjectId] = useState("default");
+  const [activeProjectId, setActiveProjectId] = useState(null);
   const [activeProjectName, setActiveProjectName] = useState("Default Project");
   const [datasets, setDatasets] = useState([]);
   const [activeDatasetId, setActiveDatasetId] = useState("northwind.db");
@@ -25,6 +32,16 @@ export const ProjectProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
   const chatLoading = chatHistory.some((message) => message.pending);
 
+  const deleteSavedAnalysis = async (projectId, analysisId) => {
+    const response = await fetch(`${BACKEND_URL}/projects/${encodeURIComponent(projectId)}/analyses/${encodeURIComponent(analysisId)}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Could not delete this saved analysis. Try again.');
+    setHistoryByProject(previous => ({ ...previous, [projectId]: (previous[projectId] || []).map(message => {
+      if (message.id !== analysisId && message.savedMessageId !== analysisId) return message;
+      return { ...message, results: null, artifacts: [], analysis_deleted: true };
+    }) }));
+    window.dispatchEvent(new CustomEvent('analysis-deleted', { detail: { projectId, analysisId } }));
+  };
+
   // 1. Fetch Projects List
   const loadProjects = async () => {
     try {
@@ -33,7 +50,7 @@ export const ProjectProvider = ({ children }) => {
         const data = await response.json();
         setProjects(data);
         if (data.length > 0) {
-          if (!activeProjectId) {
+          if (!data.some(project => project.id === activeProjectId)) {
             selectProject(data[0].id, data[0].name);
           }
         } else {
@@ -159,7 +176,8 @@ export const ProjectProvider = ({ children }) => {
 
   // 8. Post Chat Message
   const sendChatMessage = async (msg) => {
-    const projId = activeProjectId || "default";
+    if (!activeProjectId) return;
+    const projId = activeProjectId;
     const dsId = activeDatasetId || "northwind.db";
     if (pendingProjects.current.has(projId)) return;
     pendingProjects.current.add(projId);
@@ -206,6 +224,7 @@ export const ProjectProvider = ({ children }) => {
               updateReply({
                 ...result,
                 id: pendingId,
+                savedMessageId: result.id,
                 content: result.content ?? event.error ?? "The analysis failed.",
                 pending: false,
                 stage: event.stage,
@@ -272,6 +291,8 @@ export const ProjectProvider = ({ children }) => {
       selectDataset,
       sendChatMessage,
       loadSavedAnalyses,
+      deleteSavedAnalysis,
+      loadChatHistory,
       generateReport
     }}>
       {children}

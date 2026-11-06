@@ -30,6 +30,15 @@ function App() {
     setWorkspaceView("data");
   }
 
+  useEffect(() => {
+    const deleted = ({ detail }) => setResultByProject(previous => {
+      if (previous[detail.projectId]?.id !== detail.analysisId) return previous;
+      return { ...previous, [detail.projectId]: null };
+    });
+    window.addEventListener('analysis-deleted', deleted);
+    return () => window.removeEventListener('analysis-deleted', deleted);
+  }, []);
+
   const activeDataset = datasets.find((d) => d.id === activeDatasetId);
   const datasetNameLabel = activeDataset?.filename || activeDatasetId || "None";
 

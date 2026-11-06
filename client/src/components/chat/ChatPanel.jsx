@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import CalculationDetails from "./CalculationDetails";
 import { useProject } from "../../context/ProjectContext";
-import { Send, Bot, User, Image, ArrowUpRight } from "lucide-react";
+import { Send, Bot, User, ArrowUpRight } from "lucide-react";
 
 const STAGES = {
   connecting: "Connecting to the analyst",
@@ -32,11 +32,50 @@ function ChatProgress({ message }) {
 }
 
 export const ChatPanel = ({ datasetName, onOpenResult }) => {
-  const { chatHistory, sendChatMessage, chatLoading, activeDatasetId } = useProject();
+  const { chatHistory, sendChatMessage, chatLoading, activeDatasetId, activeProjectId, loadChatHistory } = useProject();
+  const [showPast, setShowPast] = useState(false);
+  const [past, setPast] = useState(null);
+  const [pastError, setPastError] = useState('');
+  const [loadingPast, setLoadingPast] = useState(false);
+  useEffect(() => {
+    if (!showPast) return;
+    const controller = new AbortController();
+    setPast(null); setPastError(''); setLoadingPast(true);
+    loadChatHistory(activeProjectId, null, controller.signal).then(page => {
+      if (!controller.signal.aborted) setPast({ ...page, projectId: activeProjectId });
+    }).catch(error => { if (!controller.signal.aborted) setPastError(error.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoadingPast(false); });
+    return () => controller.abort();
+  }, [showPast, activeProjectId, loadChatHistory]);
+  useEffect(() => {
+    const deleted = ({ detail }) => setPast(previous => {
+      if (previous?.projectId !== detail.projectId) return previous;
+      return { ...previous, messages: previous.messages.map(message => {
+        if (message.id !== detail.analysisId) return message;
+        let metadata = {}; try { metadata = JSON.parse(message.metadata_json || '{}'); } catch { /* Legacy metadata. */ }
+        delete metadata.results; delete metadata.chart_base64; delete metadata.artifacts; metadata.analysis_deleted = true;
+        return { ...message, metadata_json: JSON.stringify(metadata) };
+      }) };
+    });
+    window.addEventListener('analysis-deleted', deleted);
+    return () => window.removeEventListener('analysis-deleted', deleted);
+  }, []);
+  useEffect(() => {
+    if (showPast && past?.projectId === activeProjectId) scrollRef.current?.scrollIntoView();
+  }, [showPast, past?.projectId, activeProjectId]);
+  const older = async () => {
+    const projectId = activeProjectId; setLoadingPast(true); setPastError('');
+    try {
+      const page = await loadChatHistory(projectId, past.before);
+      setPast(previous => previous?.projectId === projectId ? { ...page, projectId, messages: [...page.messages, ...previous.messages] } : previous);
+    } catch (error) { setPastError(error.message); }
+    finally { setLoadingPast(false); }
+  };
+  const visibleHistory = showPast ? (past?.projectId === activeProjectId ? past.messages : []) : chatHistory;
   const [inputText, setInputText] = useState("");
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
-  const canSend = Boolean(activeDatasetId) && !chatLoading;
+  const canSend = Boolean(activeDatasetId && activeProjectId) && !chatLoading;
 
   const handleSend = (e) => {
     e.preventDefault();
@@ -60,12 +99,14 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
           AI Analyst
         </h3>
         <span className="eyebrow">Ask · explore · understand</span>
+        <button className="btn btn-secondary past-chat-toggle" aria-pressed={showPast} onClick={() => setShowPast(value => !value)}>{showPast ? "Back to current chat" : "Past chats"}</button>
         <p className="chat-dataset" title={datasetName}>{datasetName || "Select a dataset to start"}</p>
       </div>
 
       {/* Message Feed list */}
       <div style={{ flex: 1, padding: "16px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "16px" }}>
-        {chatHistory.length === 0 ? (
+        {showPast && <div className="past-chat-status"><p>Saved conversation · {visibleHistory.length} messages loaded</p>{loadingPast && <p role="status">Loading past chats…</p>}{pastError && <p role="alert">{pastError}</p>}{past?.has_more && <button className="btn btn-secondary" disabled={loadingPast} onClick={older}>Load older messages</button>}</div>}
+        {showPast && !visibleHistory.length ? <p>{loadingPast ? "" : "No saved messages for this project."}</p> : visibleHistory.length === 0 ? (
           <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", height: "100%", flexDirection: "column", color: "var(--text-muted)", fontSize: "13px", gap: "8px" }}>
             <Bot size={36} color="var(--accent-color)" />
             <span>{activeDatasetId ? "Start with a question about your data." : "Choose a dataset in Projects."}</span>
@@ -85,7 +126,7 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
             ))}
           </div>
         ) : (
-          chatHistory.map((msg, index) => {
+          visibleHistory.map((msg, index) => {
             const isUser = msg.role === "user";
             
             // Check metadata if exists
@@ -106,7 +147,10 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
 
             const narrativeStatistics = resultStep?.tool === "statistics" && resultStep?.parameters?.return_table !== true;
             const hasResult = !narrativeStatistics && Array.isArray(result?.data) && result?.columns?.length > 0;
-            const tables = resultStep?.tables ?? (msg.datasetId ? [msg.datasetId] : []);
+            const artifacts = msg.artifacts ?? meta.artifacts ?? [];
+            const sourceStep = artifacts.length ? calculation?.steps?.findLast(step => step.status === 'succeeded') : resultStep;
+            const canOpen = hasResult || artifacts.length > 0;
+            const tables = sourceStep?.tables ?? (msg.datasetId ? [msg.datasetId] : []);
 
             return (
               <div
@@ -148,7 +192,7 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
                     background: isUser ? "var(--accent-glow)" : "var(--bg-card)"
                   }}
                 >
-                  <div className="message-author">{isUser ? "You" : "Analyst"}</div>
+                  <div className="message-author">{isUser ? "You" : "Analyst"}{showPast && msg.created_at && <time className="past-message-time" dateTime={msg.created_at}>{new Date(msg.created_at).toLocaleString()}</time>}</div>
                   {msg.stage && <ChatProgress message={msg} />}
 
                   {/* Message body text with Markdown formatting */}
@@ -156,34 +200,22 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content ?? ""}</ReactMarkdown>
                   </div>
 
-                  {hasResult && (
+                  {canOpen && (
                     <button
                       type="button"
                       className="btn btn-secondary chat-result-card"
-                      onClick={() => onOpenResult({ id: msg.id, result, tables, calculation })}
+                      onClick={() => onOpenResult({ id: msg.savedMessageId ?? msg.id, result, artifacts, tables, calculation, question: msg.question ?? meta.question })}
                     >
                       <strong>Open result <ArrowUpRight size={15} aria-hidden="true" /></strong>
                       <span>{tables.join(" · ") || "Source unavailable"}</span>
-                      <span>{result.data.length.toLocaleString()} rows</span>
+                      <span>{hasResult ? `${result.data.length.toLocaleString()} rows` : `${artifacts.length} generated chart${artifacts.length === 1 ? "" : "s"}`}</span>
                     </button>
                   )}
 
-                  {!hasResult && <CalculationDetails calculation={calculation} />}
+                  {(msg.analysis_deleted || meta.analysis_deleted) && <p className="chart-footnote">This analysis was deleted.</p>}
+                  {!canOpen && <CalculationDetails calculation={calculation} />}
 
-                  {/* Render base64 image if complex execution created a plot */}
-                  {meta.chart_base64 && (
-                    <div style={{ marginTop: "12px", border: "1px solid var(--border-color)", borderRadius: "8px", overflow: "hidden", background: "var(--bg-card)" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px", background: "var(--bg-main)", fontSize: "11px", color: "var(--text-secondary)" }}>
-                        <Image size={12} />
-                        <span>Captured Plotly/Matplotlib Plot</span>
-                      </div>
-                      <img
-                        src={`data:image/png;base64,${meta.chart_base64}`}
-                        alt="Captured visual plot"
-                        style={{ width: "100%", display: "block" }}
-                      />
-                    </div>
-                  )}
+                  {meta.chart_base64 && !artifacts.length && <p className="chart-footnote">This older chart has no typed artifact and cannot be safely previewed. Generate it again to open it in Result.</p>}
                 </div>
               </div>
             );
@@ -194,7 +226,7 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
       </div>
 
       {/* Input container footer */}
-      <form className="chat-composer" onSubmit={handleSend} style={{ padding: "16px", borderTop: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", gap: "8px" }}>
+      {!showPast && <form className="chat-composer" onSubmit={handleSend} style={{ padding: "16px", borderTop: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", gap: "8px" }}>
         <textarea
           ref={inputRef}
           rows={2}
@@ -219,7 +251,7 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
         >
           <Send size={16} />
         </button>
-      </form>
+      </form>}
     </div>
   );
 };

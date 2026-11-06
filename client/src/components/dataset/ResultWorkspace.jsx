@@ -2,16 +2,20 @@ import { Table2, ChartBar } from "lucide-react";
 import { useState } from "react";
 import CalculationDetails from "../chat/CalculationDetails";
 import ResultTable from "../chat/ResultTable";
+import ChartArtifact from "./ChartArtifact";
 import ResultChart from "./ResultChart";
 
 export default function ResultWorkspace({ snapshot }) {
-  const [view, setView] = useState("Table");
-  const [chartOpened, setChartOpened] = useState(false);
+  const hasTable = Array.isArray(snapshot.result?.data) && snapshot.result?.columns?.length > 0;
+  const artifacts = snapshot.artifacts || [];
+  const [view, setView] = useState(hasTable ? "Table" : "Chart");
+  const [chartOpened, setChartOpened] = useState(!hasTable);
 
   return (
     <section className="result-workspace" aria-label="Analysis result">
+      {snapshot.question && <p className="result-question"><strong>Question</strong> {snapshot.question}</p>}
       <div className="workspace-toolbar result-toolbar" role="group" aria-label="Result view">
-        {["Table", "Chart"].map((label) => (
+        {(hasTable ? ["Table", "Chart"] : ["Chart"]).map((label) => (
           <button
             key={label}
             type="button"
@@ -26,14 +30,14 @@ export default function ResultWorkspace({ snapshot }) {
             {label}
           </button>
         ))}
-        <span className="result-dimensions">{snapshot.result.data.length.toLocaleString()} rows <span aria-hidden="true"> / </span> {snapshot.result.columns.length} columns</span>
+        <span className="result-dimensions">{hasTable ? `${snapshot.result.data.length.toLocaleString()} rows / ${snapshot.result.columns.length} columns` : `${artifacts.length} generated chart${artifacts.length === 1 ? "" : "s"}`}</span>
       </div>
-      <div hidden={view !== "Table"}>
+      {hasTable && <div hidden={view !== "Table"}>
         <ResultTable result={snapshot.result} />
-      </div>
+      </div>}
       {chartOpened && (
         <div hidden={view !== "Chart"}>
-          <ResultChart result={snapshot.result} />
+          {artifacts.length ? <ChartArtifact artifacts={artifacts} active={view === "Chart"} /> : hasTable ? <ResultChart result={snapshot.result} snapshot={snapshot} active={view === "Chart"} /> : <p>No chart output was captured.</p>}
         </div>
       )}
       <CalculationDetails calculation={snapshot.calculation} />

@@ -101,24 +101,26 @@ export const Sidebar = ({ onOpenSaved, savedActive }) => {
           </form>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "4px", maxHeight: "180px", overflowY: "auto" }}>
+        <div className="project-list">
           {projects.map((proj) => (
             <div key={proj.id} className="project-row">
-              <button type="button" className="nav-item" aria-current={activeProjectId === proj.id || undefined}
+              <button type="button" className="nav-item" title={proj.name} aria-current={activeProjectId === proj.id || undefined}
                 onClick={() => selectProject(proj.id, proj.name)}>
                 <Folder size={15} /><span>{proj.name}</span>
               </button>
-              <div style={{ display: "flex", gap: "4px" }}>
+              <div className="project-actions">
                 <button
-                  style={{ background: "transparent", border: "none", color: "var(--text-secondary)", cursor: "pointer" }}
+                  className="project-action"
                   aria-label={`Rename ${proj.name}`}
+                  title={`Rename ${proj.name}`}
                   onClick={() => handleRename(proj.id, proj.name)}
                 >
                   <Edit3 size={14} />
                 </button>
                 <button
-                  style={{ background: "transparent", border: "none", color: "var(--danger-color)", cursor: "pointer" }}
-                  aria-label={`Delete ${proj.name}`}
+                  className="project-action project-action-danger"
+                  aria-label={`Delete project ${proj.name}`}
+                  title={`Delete whole project: ${proj.name}`}
                   onClick={() => {
                     if (confirm(`Are you sure you want to delete project "${proj.name}"? This removes all associated data.`)) {
                       deleteProject(proj.id);
