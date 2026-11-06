@@ -39,7 +39,7 @@ class ReportService:
         if not project:
             raise ValueError("Project not found.")
             
-        project_dir = get_project_dir(project.name)
+        project_dir = get_project_dir(project.id)
         reports_dir = os.path.join(project_dir, "reports")
         os.makedirs(reports_dir, exist_ok=True)
         

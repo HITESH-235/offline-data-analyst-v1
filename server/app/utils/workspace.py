@@ -37,20 +37,19 @@ def get_projects_path() -> str:
     """
     return os.path.join(get_workspace_path(), "projects")
 
-def get_project_dir(project_name: str) -> str:
-    """
-    Returns the path to a specific project folder inside the workspace.
-    """
-    # Safe naming mapping: replace spaces/unusual characters or use direct slug
-    safe_name = "".join([c if c.isalnum() or c in "-_" else "_" for c in project_name])
-    return os.path.join(get_projects_path(), safe_name)
+def get_project_dir(project_id: str) -> str:
+    """Resolve an immutable project ID without allowing paths or aliases."""
+    import re
+    if not isinstance(project_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", project_id):
+        raise ValueError("Invalid project ID for storage")
+    return os.path.join(get_projects_path(), project_id)
 
-def verify_project_structure(project_name: str) -> bool:
+def verify_project_structure(project_id: str) -> bool:
     """
     Verifies that all required subdirectories exist for a given project.
     Returns True if valid, False otherwise.
     """
-    project_dir = get_project_dir(project_name)
+    project_dir = get_project_dir(project_id)
     if not os.path.exists(project_dir):
         return False
         
@@ -62,16 +61,16 @@ def verify_project_structure(project_name: str) -> bool:
             
     return True
 
-def initialize_project_dirs(project_name: str) -> str:
+def initialize_project_dirs(project_id: str) -> str:
     """
     Creates a project folder and all its required subdirectories.
     Returns the absolute path of the project.
     """
-    project_dir = get_project_dir(project_name)
+    project_dir = get_project_dir(project_id)
     os.makedirs(project_dir, exist_ok=True)
     
     for subdir in PROJECT_SUBDIRS:
         os.makedirs(os.path.join(project_dir, subdir), exist_ok=True)
         
-    logger.info(f"Initialized folder structure for project '{project_name}' at: {project_dir}")
+    logger.info(f"Initialized folder structure for project '{project_id}' at: {project_dir}")
     return project_dir
