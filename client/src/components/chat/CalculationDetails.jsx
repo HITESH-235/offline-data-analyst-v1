@@ -8,6 +8,7 @@ export default function CalculationDetails({ calculation }) {
           <li key={stepIndex}>
             <strong>{step.tool.replaceAll("_", " ")}</strong>
             {" · "}{step.status}
+            {step.superseded && <p>Superseded by a later calculation; its charts are not final results.</p>}
             {step.execution_skipped && <p>Not executed: this repeats an earlier failed call.</p>}
             {step.tables?.length > 0 && <p>Data used: {step.tables.join(", ")}</p>}
             {step.join_keys?.length > 0 && (

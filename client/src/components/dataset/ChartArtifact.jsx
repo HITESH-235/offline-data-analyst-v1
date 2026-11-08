@@ -67,6 +67,7 @@ export default function ChartArtifact({ artifacts, active }) {
       <p className="chart-footnote">PNG image · static figure with its original aspect ratio. On narrow screens, scroll to read the full image or open it at full size.</p>
       <a className="btn btn-secondary" href={image} target="_blank" rel="noreferrer">View full-size PNG</a>
     </> : <p className="chart-notice">{imageFailed?'The saved image could not be loaded.':artifact.reason || 'This artifact cannot be previewed by the local renderer.'}</p>}
+    {artifact.population?.verified && <p className="chart-footnote">Verified population: {artifact.population.count.toLocaleString()} orders, grouped by OrderID from {artifact.population.input_line_count.toLocaleString()} line items. The answer and chart use the same observations.</p>}
     {download && <a className="btn btn-secondary artifact-download" href={download} download>Download {artifact.kind==='png'?'PNG':artifact.download_format==='json'?'figure JSON':artifact.kind==='plotly'?'HTML export':'artifact'}</a>}
   </section>;
 }

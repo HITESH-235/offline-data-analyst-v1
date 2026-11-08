@@ -1,3 +1,4 @@
+import { calculationSources } from "../dataset/analysisPackage";
 import React, { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -13,6 +14,7 @@ const STAGES = {
   preparing_answer: "Preparing the answer",
   completed: "Completed",
   failed: "Failed",
+  incomplete: "Incomplete",
 };
 
 function ChatProgress({ message }) {
@@ -53,7 +55,7 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
       return { ...previous, messages: previous.messages.map(message => {
         if (message.id !== detail.analysisId) return message;
         let metadata = {}; try { metadata = JSON.parse(message.metadata_json || '{}'); } catch { /* Legacy metadata. */ }
-        delete metadata.results; delete metadata.chart_base64; delete metadata.artifacts; metadata.analysis_deleted = true;
+        delete metadata.results; delete metadata.chart_base64; delete metadata.artifacts; delete metadata.analysis_package; metadata.analysis_deleted = true;
         return { ...message, metadata_json: JSON.stringify(metadata) };
       }) };
     });
@@ -140,9 +142,10 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
             }
 
             const calculation = msg.calculation ?? meta.calculation;
-            const result = msg.results ?? meta.results;
+            const analysisPackage=msg.analysis_package ?? meta.analysis_package;
+            const result = analysisPackage ? analysisPackage.tables?.[0]?.result : msg.results ?? meta.results;
             const resultStep = calculation?.steps?.findLast(
-              (step) => step.status === "succeeded" && step.tool !== "run_code"
+              (step) => step.status === "succeeded" && (step.tool !== "run_code" || result?.analysis_kind === 'correlation')
             );
 
             const narrativeStatistics = resultStep?.tool === "statistics" && resultStep?.parameters?.return_table !== true;
@@ -150,7 +153,7 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
             const artifacts = msg.artifacts ?? meta.artifacts ?? [];
             const sourceStep = artifacts.length ? calculation?.steps?.findLast(step => step.status === 'succeeded') : resultStep;
             const canOpen = hasResult || artifacts.length > 0;
-            const tables = sourceStep?.tables ?? (msg.datasetId ? [msg.datasetId] : []);
+            const tables = calculationSources(analysisPackage,sourceStep?.tables ?? (msg.datasetId ? [msg.datasetId] : []));
 
             return (
               <div
@@ -204,11 +207,11 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
                     <button
                       type="button"
                       className="btn btn-secondary chat-result-card"
-                      onClick={() => onOpenResult({ id: msg.savedMessageId ?? msg.id, result, artifacts, tables, calculation, question: msg.question ?? meta.question })}
+                      onClick={() => onOpenResult({ id: msg.savedMessageId ?? msg.id, result, artifacts, tables, calculation, analysisPackage, question: msg.question ?? meta.question })}
                     >
-                      <strong>Open result <ArrowUpRight size={15} aria-hidden="true" /></strong>
+                      <strong>{analysisPackage && analysisPackage.status !== "complete" ? "Open incomplete result" : "Open result"} <ArrowUpRight size={15} aria-hidden="true" /></strong>
                       <span>{tables.join(" · ") || "Source unavailable"}</span>
-                      <span>{hasResult ? `${result.data.length.toLocaleString()} rows` : `${artifacts.length} generated chart${artifacts.length === 1 ? "" : "s"}`}</span>
+                      <span>{result?.analysis_kind === 'correlation' ? `${result.row_count} × ${result.row_count} matrix · Heatmap` : hasResult ? `${result.data.length.toLocaleString()} rows` : `${artifacts.length} generated chart${artifacts.length === 1 ? "" : "s"}`}</span>
                     </button>
                   )}
 

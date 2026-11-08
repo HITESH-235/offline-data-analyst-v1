@@ -48,7 +48,7 @@ export default function ResultTable({ result }) {
                   ? (sort.direction === 1 ? "ascending" : "descending")
                   : undefined}>
                   <button type="button" className="btn btn-secondary" onClick={() => sortBy(column)}>
-                    {column}{sort?.column === column && (sort.direction === 1 ? " ↑" : " ↓")}
+                    {column}{result.units?.[column] && !column.includes(result.units[column]) ? ` (${result.units[column]})` : ''}{sort?.column === column && (sort.direction === 1 ? " ↑" : " ↓")}
                   </button>
                 </th>
               ))}
@@ -58,8 +58,9 @@ export default function ResultTable({ result }) {
             {sortedRows.slice(start, start + PAGE_SIZE).map((row, index) => (
               <tr key={start + index}>
                 {columns.map((column) => {
-                  const value = displayValue(row[column]);
-                  return <td key={column} className={numericColumns.includes(column) ? "numeric" : undefined} title={value}>{value}</td>;
+                  const raw = row[column];
+                  const value = result.analysis_kind === 'correlation' && typeof raw === 'number' ? raw.toFixed(4) : result.units?.[column] === 'BRL' && typeof raw === 'number' ? raw.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : displayValue(raw);
+                  return <td key={column} className={numericColumns.includes(column) ? "numeric" : undefined} title={displayValue(raw)}>{value}</td>;
                 })}
               </tr>
             ))}

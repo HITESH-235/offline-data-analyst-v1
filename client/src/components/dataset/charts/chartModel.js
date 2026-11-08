@@ -20,14 +20,23 @@ export function dateValue(value) {
 export function inspectResult(result, calculation, question = '', meaning = '') {
   const data = Array.isArray(result?.data) ? result.data : [];
   const columns = Array.isArray(result?.columns) ? result.columns : [];
+  const calendar = result?.analysis_kind === 'calendar_aggregate' && result.calendar_chart;
+  if (calendar && columns.includes(calendar.x) && calendar.series?.length && calendar.series.every(c => columns.includes(c)) &&
+      data.every(row => calendar.series.every(c => Number.isFinite(row[c])))) {
+    const y=result.analysis_context?.metric?.name || calendar.series[0];
+    return {data,columns,categories:[calendar.x],numbers:calendar.series,dates:[],ids:[],aggregated:true,raw:false,matrix:null,
+      calendar,choices:{line:[{x:calendar.x,y}]},types:['line'],preferred:'line',initial:{x:calendar.x,y},
+      reason:'Calendar periods retain chronological order; comparison years share the same periods.',unknownMeaning:false};
+  }
   const steps = calculation?.steps?.filter(step => step.status === 'succeeded') || [];
-  const aggregated = steps.some(step => ['aggregation', 'statistics', 'correlation'].includes(step.tool)) || columns.some(column => /^(sum|avg|mean|count)[_( ]|^total/i.test(column)) || /\b(grouped by|group by|summed|aggregated totals)\b/i.test(question);
+  const aggregated = ['aggregation','comparison_summary'].includes(result?.analysis_kind) || steps.some(step => ['aggregation', 'monthly_revenue', 'statistics', 'correlation'].includes(step.tool)) || columns.some(column => /^(sum|avg|mean|count)[_( ]|^total/i.test(column)) || /\b(grouped by|group by|summed|aggregated totals)\b/i.test(question);
   const raw = !aggregated && meaning !== 'summary' && (meaning === 'raw' || steps.some(step => step.tool === 'filtering') || /\b(raw|individual) (observations|records|rows)\b/i.test(question));
   const categories = [], numbers = [], dates = [], ids = [];
   for (const column of columns) {
     const values = data.map(row => row[column]).filter(present);
     const declared = String(result?.data_types?.[column] ?? result?.column_types?.[column] ?? '').toLowerCase();
-    if (isIdentifier(column) || /identifier|primary.?key/.test(declared)) { ids.push(column); continue; }
+    const counted = result?.measure_provenance?.[column]?.operation === 'count' || steps.some(step => step.tool === 'aggregation' && step.parameters?.aggregations?.[column] === 'count');
+    if (!counted && (isIdentifier(column) || /identifier|primary.?key/.test(declared))) { ids.push(column); continue; }
     if (!values.length) continue;
     if (/date|time/.test(declared)) {
       if (values.every(value => dateValue(value) !== null)) dates.push(column);
@@ -50,7 +59,7 @@ export function inspectResult(result, calculation, question = '', meaning = '') 
       if (values.every(row => row.every(value => value == null || (Number.isFinite(value) && Math.abs(value) <= 1)))) matrix = { columns: numbers, matrix: values };
     }
   }
-  if (matrix) {
+  if (matrix && result?.analysis_kind !== 'correlation') {
     const kept = matrix.columns.map((name, index) => ({ name, index })).filter(({ name }) => !isIdentifier(name));
     matrix = kept.length >= 2 ? { columns: kept.map(({ name }) => name), matrix: kept.map(({ index }) => kept.map(item => matrix.matrix[index][item.index])) } : null;
   }
@@ -71,7 +80,9 @@ export function inspectResult(result, calculation, question = '', meaning = '') 
     return counts.size > 0 && [...counts.values()].every(count => count >= 2);
   }) : [];
   const histogram = raw ? numbers.filter(column => data.filter(row => Number.isFinite(row[column])).length >= 2).map(x => ({ x, y: '' })) : [];
-  const choices = { bar, line, scatter, histogram, box, heatmap: matrix ? [{ x: '', y: '' }] : [] };
+  const choices = result?.analysis_kind === 'correlation'
+    ? { bar: [], line: [], scatter: [], histogram: [], box: [], heatmap: matrix ? [{ x: '', y: '' }] : [] }
+    : { bar, line, scatter, histogram, box, heatmap: matrix ? [{ x: '', y: '' }] : [] };
   const types = Object.keys(choices).filter(type => choices[type].length);
   let preferred = matrix ? 'heatmap' : line.length ? 'line' : box.length ? 'box' : bar.length ? 'bar' : scatter.length ? 'scatter' : histogram.length ? 'histogram' : '';
   // More than two numeric columns require a deliberate choice, not an arbitrary pair.
@@ -84,7 +95,7 @@ export function inspectResult(result, calculation, question = '', meaning = '') 
     box: 'Repeated raw observations in each category can show spread and median.',
     heatmap: 'A supplied correlation matrix shows relationships between measures.',
   };
-  return { data, columns, categories, numbers, dates, ids, aggregated, raw, matrix, choices, types, preferred, initial, reason: reasons[preferred], unknownMeaning: !aggregated && !raw, duplicateCategories: categoryPairs.length > bar.length };
+  return { data, columns, units:result?.units || {}, categories, numbers, dates, ids, aggregated, raw, matrix, choices, types, preferred, initial, reason: reasons[preferred], unknownMeaning: !aggregated && !raw, duplicateCategories: categoryPairs.length > bar.length };
 }
 
 export function rankRows(data, x, y) {
@@ -110,6 +121,14 @@ const quantile = (values, q) => { const n = (values.length - 1) * q, low = Math.
 
 export function makeChart(model, type, x, y, ranking, limit = 10) {
   if (!model.choices[type]?.some(pair => pair.x === x && pair.y === y)) return null;
+  if (model.calendar && type === 'line') {
+    const colors=['#007D73','#14212B','#637F8D','#9A613C'];
+    return {type,calendar:true,title:`${y} by calendar ${model.calendar.grain}`,xLabel:x,yLabel:y,omitted:0,
+      traces:model.calendar.series.map((series,i)=>({type:'scatter',mode:'lines+markers',name:series,
+        x:model.data.map(row=>escape(row[x])),y:model.data.map(row=>row[series]),line:{color:colors[i%colors.length]},
+        hovertemplate:`%{x}: %{y:,.2f}<extra>${escape(series)}</extra>`})),
+      details:model.data.flatMap(row=>model.calendar.series.map(series=>`${row[x]} · ${series}: ${formatValue(row[series])}`))};
+  }
   const teal = '#007D73';
   const base = { marker: { color: teal }, hoverlabel: { bgcolor: '#14212B', font: { color: '#FFFFFF' } } };
   let traces = [], details = [], title = '', xLabel = x, yLabel = y, omitted = 0;
@@ -120,7 +139,7 @@ export function makeChart(model, type, x, y, ranking, limit = 10) {
     xLabel = y; yLabel = x;
     traces = [{ ...base, type: 'bar', orientation: 'h', x: rows.map(row => row.value), y: rows.map((_, i) => i),
       text: rows.map(row => formatValue(row.value)), textposition: rows.map(row => row.value === 0 ? 'outside' : 'auto'), cliponaxis: false, outsidetextfont: { color: '#14212B' }, customdata: rows.map(row => escape(row.label)),
-      hovertemplate: '%{customdata}<br>%{x:,}<extra></extra>' }];
+      hovertemplate: model.units?.[y] ? `%{customdata}<br>%{x:,.2f} ${escape(model.units[y])}<extra></extra>` : '%{customdata}<br>%{x:,}<extra></extra>' }];
     omitted = model.data.length - model.data.filter(row => present(row[x]) && Number.isFinite(row[y])).length;
     return { traces, details, title, xLabel, yLabel, omitted, rows, type };
   }
@@ -167,8 +186,9 @@ export function makeChart(model, type, x, y, ranking, limit = 10) {
     const { columns, matrix } = model.matrix;
     title = 'Correlation between measures'; xLabel = 'Measure'; yLabel = 'Measure';
     details = matrix.flatMap((row, i) => row.map((value, j) => `${columns[i]} × ${columns[j]}: ${value == null ? 'unavailable' : formatValue(value)}`));
-    traces = [{ type: 'heatmap', x: columns.map(escape), y: columns.map(escape), z: matrix, zmin: -1, zmax: 1,
+    traces = [{ type: 'heatmap', x: columns.map(escape), y: columns.map(escape), z: matrix, zmin: -1, zmax: 1, zmid: 0, zauto: false,
       colorscale: [[0, '#975437'], [.5, '#F5F3EE'], [1, teal]], colorbar: { title: { text: 'Correlation' }, thickness: 12 },
+      ...(columns.length <= 8 ? { text: matrix.map(row => row.map(value => value == null ? 'N/A' : value.toFixed(4))), texttemplate: '%{text}', textfont: { size: 13 } } : {}),
       hovertemplate: '%{y} × %{x}: %{z:.4f}<extra></extra>', hoverongaps: false }];
   }
   return { traces, details, title, xLabel, yLabel, omitted, type };

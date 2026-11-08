@@ -40,14 +40,21 @@ function Plot({ chart, active, unit }) {
           width, height: isBar ? Math.max(300, rowHeight * chart.rows.length + 95) : 370,
           paper_bgcolor: '#FFFFFF', plot_bgcolor: '#FFFFFF', font: { family: 'system-ui, sans-serif', color: '#14212B', size: 12 },
           margin: { l: isBar ? (narrow ? 125 : 175) : 60, r: chart.type === 'heatmap' ? 65 : 24, t: 20, b: 65 },
-          showlegend: false, hovermode: 'closest', dragmode: false, bargap: .32,
+          showlegend: Boolean(chart.calendar && chart.traces.length > 1), legend:{orientation:'h'}, hovermode: 'closest', dragmode: false, bargap: .32,
           xaxis: { ...axis, title: { text: escapePlotText(chart.xLabel === unit ? unit : `${chart.xLabel}${unit && ['bar', 'histogram'].includes(chart.type) ? ` (${unit})` : ''}`), standoff: 12 },
             ...(isBar ? { rangemode: 'tozero', tickformat: '~s', nticks: narrow ? 4 : 6 } : {}),
-            ...(chart.type === 'line' ? { type: 'date', nticks: narrow ? 4 : 7 } : {}) },
+            ...(chart.type === 'line' ? chart.calendar ? {type:'category',categoryorder:'array',categoryarray:chart.traces[0].x} : { type: 'date', nticks: narrow ? 4 : 7 } : {}) },
           yaxis: { ...axis, title: { text: isBar ? '' : escapePlotText(`${chart.yLabel}${unit && ['line','scatter','box'].includes(chart.type) && unit !== chart.yLabel ? ` (${unit})` : ''}`), standoff: 10 },
             ...(isBar ? { tickmode: 'array', tickvals: chart.rows.map((_, i) => i), ticktext: labels, autorange: 'reversed', showgrid: false, zeroline: false } : {}),
             ...(chart.type === 'histogram' ? { rangemode: 'tozero', tickformat: ',d', nticks: 6 } : {}) },
         };
+        if (chart.type === 'heatmap') {
+          layout.xaxis.categoryorder = 'array';
+          layout.xaxis.categoryarray = chart.traces[0].x;
+          layout.yaxis.categoryorder = 'array';
+          layout.yaxis.categoryarray = chart.traces[0].y;
+          layout.yaxis.autorange = 'reversed';
+        }
         return Plotly.react(node, chart.traces, layout, { displayModeBar: false, responsive: false, scrollZoom: false, displaylogo: false });
       };
       await draw();
@@ -78,17 +85,28 @@ function Plot({ chart, active, unit }) {
 }
 
 function ChartExplorer({ result, snapshot, active, model }) {
-  const [type, setType] = useState(model.preferred);
-  const [fields, setFields] = useState(model.initial);
-  const [limit, setLimit] = useState(10);
+  const requested=snapshot.chartSpec;
+  const requestedPair=requested && model.choices[requested.chart_type]?.find(p=>p.x===requested.x && (p.y===requested.y || !p.y));
+  const [type, setType] = useState(requestedPair?requested.chart_type:model.preferred);
+  const [fields, setFields] = useState(requestedPair || model.initial);
+  const [limit, setLimit] = useState(snapshot.chartScope?.top_n || 10);
   const { x, y } = fields;
   // Top N only slices this cached ranking; table sorting and pagination never enter it.
-  const ranking = useMemo(() => type === 'bar' && x && y ? rankRows(model.data, x, y) : [], [model.data, type, x, y]);
+  const rankingCache=useRef(null);
+  const ranking = useMemo(() => {
+    const cached=rankingCache.current;
+    if (cached?.data===model.data && cached.x===x && cached.y===y) return cached.rows;
+    if (!active || type!=='bar' || !x || !y) return [];
+    const rows=rankRows(model.data,x,y);
+    rankingCache.current={data:model.data,x,y,rows};
+    return rows;
+  }, [model.data,type,x,y,active]);
   const chart = useMemo(() => makeChart(model, type, x, y, ranking, limit), [model, type, x, y, ranking, limit]);
   const pairs = model.choices[type] || [];
   const xs = [...new Set(pairs.map(pair => pair.x))];
   const ys = [...new Set(pairs.filter(pair => !x || pair.x === x).map(pair => pair.y))];
-  const unit = unitFor(result, type === 'histogram' ? x : y);
+  const rawUnit = unitFor(result, type === 'histogram' ? x : y);
+  const unit = rawUnit && (type === 'histogram' ? x : y).includes(rawUnit) ? '' : rawUnit;
   const changeType = value => {
     setType(value);
     const options = model.choices[value];
@@ -115,7 +133,7 @@ function ChartExplorer({ result, snapshot, active, model }) {
       <Plot chart={chart} active={active} unit={unit === y || unit === x ? '' : unit} />
       {chart.omitted > 0 && <p className="chart-notice">{chart.omitted.toLocaleString()} rows without usable values in the selected fields were omitted.</p>}
       {type === 'bar' && <p className="chart-footnote">Ranked across the full result. Zero baseline; no categories combined.</p>}
-      {type === 'line' && <p className="chart-footnote">All usable dates, ordered chronologically. Missing values are omitted; no dates are filled in.</p>}
+      {type === 'line' && <p className="chart-footnote">{chart?.calendar ? 'Calendar periods in chronological order. Empty periods have zero sum/count; comparison years share the same metric and period boundaries.' : 'All usable dates, ordered chronologically. Missing values are omitted; no dates are filled in.'}</p>}
       {type === 'box' && <p className="chart-footnote">Linear-interpolated quartiles; whiskers stop at observations within 1.5 × IQR. Dots show outliers.</p>}
     </>}
   </>;

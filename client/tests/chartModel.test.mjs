@@ -54,3 +54,84 @@ test('small-sample box whiskers never fall inside the quartile box',()=>{
  const chart=render(fixtures.grouped,'box');
  chart.traces[0].q1.forEach((q1,i)=>{assert.ok(chart.traces[0].lowerfence[i]<=q1);assert.ok(chart.traces[0].upperfence[i]>=chart.traces[0].q3[i]);});
 });
+test('verified monthly revenue opens as chronological line and cannot become a distribution',()=>{
+ const snapshot={result:{columns:['Month','Revenue'],data:[{Month:'2022-02',Revenue:20},{Month:'2022-01',Revenue:10}],data_types:{Month:'date',Revenue:'float'},analysis_kind:'monthly_revenue'},calculation:{steps:[{tool:'monthly_revenue',status:'succeeded'}]}};
+ const model=inspectResult(snapshot.result,snapshot.calculation,'show monthly revenue for year 2022','raw');
+ assert.equal(model.preferred,'line');assert.equal(model.choices.histogram.length,0);assert.equal(model.choices.box.length,0);
+ const chart=makeChart(model,'line','Month','Revenue',[],10);
+ assert.deepEqual(chart.traces[0].y,[10,20]);
+});
+test('validated correlation table and heatmap share all coefficients and requested order',()=>{
+ const columns=['Discount','UnitPrice','Quantity'];
+ const matrix=[[1,-.0030953092568265475,.004464951441794699],[-.0030953092568265475,1,.0006114333954079673],[.004464951441794699,.0006114333954079673,1]];
+ const result={analysis_kind:'correlation',source_observation_count:609283,row_count:3,columns:['Measure',...columns],correlation:{columns,matrix},data:columns.map((Measure,i)=>Object.fromEntries([['Measure',Measure],...columns.map((c,j)=>[c,matrix[i][j]])]))};
+ const model=inspectResult(result);assert.deepEqual(model.types,['heatmap']);
+ const chart=makeChart(model,'heatmap','','',[],10);
+ assert.deepEqual(chart.traces[0].x,columns);assert.deepEqual(chart.traces[0].y,columns);
+ assert.deepEqual(chart.traces[0].z,result.data.map(row=>columns.map(c=>row[c])));
+ assert.deepEqual(chart.traces[0].text,matrix.map(row=>row.map(v=>v.toFixed(4))));
+ assert.equal(chart.traces[0].texttemplate,'%{text}');
+});
+test('explicit identifier correlation measures are preserved and undefined coefficients remain null',()=>{
+ const result={analysis_kind:'correlation',correlation:{columns:['OrderID','Quantity'],matrix:[[1,null],[null,null]]},columns:['Measure','OrderID','Quantity'],data:[{Measure:'OrderID',OrderID:1,Quantity:null},{Measure:'Quantity',OrderID:null,Quantity:null}]};
+ const model=inspectResult(result);assert.deepEqual(model.matrix.columns,['OrderID','Quantity']);
+ const chart=makeChart(model,'heatmap','','',[],10);
+ assert.deepEqual(chart.traces[0].z,[[1,null],[null,null]]);assert.equal(chart.traces[0].text[0][1],'N/A');
+});
+test('captured Northwind table, heatmap labels and grounded narrative agree',()=>{
+ const saved=JSON.parse(readFileSync(new URL('./fixtures/northwind-correlation.json',import.meta.url)));
+ const result=saved.result, model=inspectResult(result);
+ const chart=makeChart(model,'heatmap','','',[],10);
+ assert.equal(result.source_observation_count,609283);
+ assert.equal(result.row_count,3);
+ assert.deepEqual(chart.traces[0].x,['UnitPrice','Quantity','Discount']);
+ assert.deepEqual(chart.traces[0].y,chart.traces[0].x);
+ assert.deepEqual(chart.traces[0].z,result.data.map(row=>chart.traces[0].x.map(c=>row[c])));
+ chart.traces[0].text.flat().forEach(label=>assert.ok(saved.content.includes(label)));
+ assert.ok(saved.content.includes('609,283'));
+ assert.ok(saved.content.includes('do not establish statistical independence'));
+});
+test('correlation heatmap fixes diverging scale at minus one, zero and plus one',()=>{
+ const captured=JSON.parse(readFileSync(new URL('./fixtures/northwind-correlation.json',import.meta.url)));
+ const model=inspectResult(captured.result);
+ const chart=makeChart(model,'heatmap','','',[],10), trace=chart.traces[0];
+ assert.equal(trace.zmin,-1);assert.equal(trace.zmax,1);assert.equal(trace.zmid,0);assert.equal(trace.zauto,false);
+ assert.equal(trace.colorscale[1][0],.5);
+ assert.notEqual(trace.colorscale[0][1],trace.colorscale[2][1]);
+ assert.equal(trace.texttemplate,'%{text}');assert.deepEqual(trace.x,trace.y);
+});
+test('calendar comparison plots all aligned quarterly series from the result table without Top N',()=>{
+ const data=[1,2,3,4].map(q=>({Quarter:`Q${q}`,'Revenue 2021':q*10,'Revenue 2022':q*20}));
+ const result={analysis_kind:'calendar_aggregate',columns:['Quarter','Revenue 2021','Revenue 2022'],data,
+   analysis_context:{metric:{name:'Revenue'}},calendar_chart:{x:'Quarter',series:['Revenue 2021','Revenue 2022'],grain:'quarter'}};
+ const model=inspectResult(result);assert.equal(model.preferred,'line');assert.deepEqual(model.initial,{x:'Quarter',y:'Revenue'});
+ const chart=makeChart(model,'line','Quarter','Revenue',[],1);
+ assert.deepEqual(chart.traces[0].x,['Q1','Q2','Q3','Q4']);assert.deepEqual(chart.traces[1].x,chart.traces[0].x);
+ for(const trace of chart.traces)assert.deepEqual(trace.y,data.map(row=>row[trace.name]));
+ assert.equal(chart.calendar,true);assert.equal(chart.details.length,8);assert.equal(model.raw,false);
+});
+test('restored monthly comparison preserves twelve periods and both year series',()=>{
+ const data=Array.from({length:12},(_,i)=>({Month:String(i+1).padStart(2,'0'),'Revenue 2021':100+i,'Revenue 2022':200+i}));
+ const result={analysis_kind:'calendar_aggregate',columns:['Month','Revenue 2021','Revenue 2022'],data,
+   analysis_context:{metric:{name:'Revenue'},years:[2021,2022],compare:true,grain:'month'},
+   calendar_chart:{x:'Month',series:['Revenue 2021','Revenue 2022'],grain:'month'}};
+ const model=inspectResult(result);const chart=makeChart(model,'line','Month','Revenue',[],5);
+ assert.equal(chart.traces.length,2);
+ for(const trace of chart.traces){assert.equal(trace.x.length,12);assert.deepEqual(trace.y,data.map(row=>row[trace.name]));}
+ assert.deepEqual(chart.traces[0].x,data.map(row=>row.Month));
+ assert.deepEqual(chart.traces[0].x,chart.traces[1].x);
+});
+test('aggregation count provenance makes identifiers usable measures while raw identifiers stay excluded',()=>{
+ const result={columns:['order_status','order_id'],data:[{order_status:'delivered',order_id:96478},{order_status:'canceled',order_id:625}],measure_provenance:{order_id:{source_column:'order_id',operation:'count',role:'measure'}}};
+ assert.deepEqual(inspectResult(result).numbers,['order_id']);
+ assert.deepEqual(inspectResult({...result,measure_provenance:{}}).numbers,[]);
+ const legacy=inspectResult({...result,measure_provenance:{}},{steps:[{tool:'aggregation',status:'succeeded',parameters:{aggregations:{order_id:'count'}}}]});
+ assert.deepEqual(legacy.numbers,['order_id']);
+});
+test('BRL chart bars, labels and hover use transformed saved values without dividing again',()=>{
+ const result={analysis_kind:'aggregation',columns:['payment_type','Payments (BRL)'],data:[{payment_type:'credit_card','Payments (BRL)':12542084.19},{payment_type:'boleto','Payments (BRL)':2869361.27}],units:{'Payments (BRL)':'BRL'},measure_provenance:{'Payments (BRL)':{operation:'sum',source_column:'payment_value_cents',transform:{divide_by:100}}}};
+ const model=inspectResult(result);const ranking=rankRows(model.data,'payment_type','Payments (BRL)');
+ const chart=makeChart(model,'bar','payment_type','Payments (BRL)',ranking,10);
+ assert.deepEqual(chart.traces[0].x,result.data.map(r=>r['Payments (BRL)']));
+ assert.ok(chart.details[0].includes('12,542,084.19'));assert.equal(chart.yLabel,'payment_type');
+});
