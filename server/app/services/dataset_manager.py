@@ -183,6 +183,9 @@ class DatasetManager:
             return '"' + identifier.replace('"', '""') + '"'
 
         with closing(sqlite3.connect(Path(first.filepath).resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+            from app.services.olist_import import APPLICATION_ID, validate_join_grain
+            if conn.execute('PRAGMA application_id').fetchone()[0] == APPLICATION_ID:
+                validate_join_grain([dataset.table_name for dataset in datasets])
             tables = {dataset.id: dataset.table_name for dataset in datasets}
             columns = {
                 table_id: [row[1] for row in conn.execute(f"PRAGMA table_info({quote(table)})")]
