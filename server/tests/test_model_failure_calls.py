@@ -22,7 +22,7 @@ class ModelFailureCallsTest(unittest.TestCase):
         for target, value in [
             ('app.api.v1.chat.DatasetManager.get_dataset',True),
             ('app.api.v1.chat.MetadataService.get_profile',{'columns':['Value']}),
-            ('app.llm.table_selector.MetadataService.get_catalog_index',{'tables':{},'relationships':[]}),
+            ('app.llm.table_selector.MetadataService.get_catalog_index',{'tables':{'fixture':{'columns':['Value']}},'relationships':[]}),
         ]:
             item=patch(target,return_value=value);item.start();self.stack.append(item)
     def tearDown(self):
@@ -81,10 +81,10 @@ class ModelFailureCallsTest(unittest.TestCase):
             self.assertIn('503',events[-1]['result']['content'])
         finally:engine.dispose()
 
-    def test_successful_analysis_still_reaches_agent(self):
+    def test_final_prose_without_calculation_is_incomplete(self):
         sequence=[self.response({'intent':'SIMPLE'}),self.response({'tables_needed':['fixture']}),self.response({'action':'final_answer','content':'Done'})]
         with patch('app.llm.client.urllib.request.urlopen',side_effect=sequence) as provider:
             response,failed=process_chat_message(self.request,self.db,lambda stage:None)
-        self.assertFalse(failed);self.assertEqual(response['content'],'Done');self.assertEqual(provider.call_count,3)
+        self.assertTrue(failed);self.assertEqual(response['analysis_status'],'incomplete');self.assertNotIn('results',response);self.assertEqual(provider.call_count,3)
 
 if __name__=='__main__':unittest.main()

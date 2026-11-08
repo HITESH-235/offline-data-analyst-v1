@@ -19,7 +19,7 @@ def persist_captures(output_dir, project_id):
     artifacts = []
     for capture in captures:
         ident = uuid.uuid4().hex
-        artifact = {key: capture[key] for key in ('kind', 'title', 'status', 'reason', 'width', 'height') if key in capture}
+        artifact = {key: capture[key] for key in ('kind', 'title', 'status', 'reason', 'width', 'height', 'observations', 'population') if key in capture}
         artifact.update({'id': ident, 'version': 1})
         files = {}
         for role in ('figure', 'download'):

@@ -33,7 +33,7 @@ class ChartArtifactTest(unittest.TestCase):
   replies=[json.dumps({'action':'tool_call','tool':'run_code','parameters':{'code':EXAMPLES[name]}}),json.dumps({'action':'final_answer','content':'Controlled '+name})]
   with patch('app.llm.agent.OllamaClient.call_model_chat',side_effect=replies) as model:
    result,failed=process_chat_message(ChatRequest(project_id='test',dataset_id='fixture.csv',message='Controlled '+name),self.db,lambda stage:None)
-  self.assertFalse(failed,result);self.assertEqual(model.call_count,2)
+  self.assertTrue(failed,result);self.assertEqual(result['analysis_status'],'incomplete');self.assertEqual(model.call_count,2)
   self.assertNotIn('chart_base64',result)
   return result
  def test_real_plotly_path_persists_and_restores_without_overwrite(self):
@@ -67,9 +67,9 @@ class ChartArtifactTest(unittest.TestCase):
   replies=[json.dumps({'action':'tool_call','tool':'run_code','parameters':{'code':EXAMPLES['line']}}),RuntimeError('Provider unavailable')]
   with patch('app.llm.agent.OllamaClient.call_model_chat',side_effect=replies) as model:
    response,failed=process_chat_message(ChatRequest(project_id='test',dataset_id='fixture.csv',message='Controlled line'),self.db,lambda stage:None)
-  self.assertFalse(failed);self.assertEqual(model.call_count,2)
+  self.assertTrue(failed);self.assertEqual(response['analysis_status'],'incomplete');self.assertEqual(model.call_count,2)
   self.assertEqual(len(response['artifacts']),1)
-  self.assertIn('could not prepare',response['content'])
+  self.assertIn('incomplete',response['content'])
   self.assertEqual(len(list_saved_analyses('test',self.db)),1)
 
  def test_artifact_path_is_project_scoped(self):

@@ -52,7 +52,7 @@ class SandboxRunner:
         return target_path
 
     @staticmethod
-    def run_code(dataset_id: str, python_code: str, project_id: Optional[str] = None, *, dataframe=None) -> Dict[str, Any]:
+    def run_code(dataset_id: str, python_code: str, project_id: Optional[str] = None, *, dataframe=None, chart_expectation=None, correlation_request=None) -> Dict[str, Any]:
         """
         Validates python_code and executes it in an isolated subprocess.
         Returns execution results including stdout, error trace, and generated plot paths.
@@ -113,6 +113,7 @@ class SandboxRunner:
             result = subprocess.run(
                 cmd,
                 cwd=temp_dir,
+                env={**os.environ, "PYTHONPATH":os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))},
                 capture_output=True,
                 text=True,
                 timeout=SANDBOX_TIMEOUT_SECONDS,
@@ -147,6 +148,44 @@ class SandboxRunner:
                     pass
                     
             from app.services.chart_artifacts import persist_captures
+            structured_result = None
+            verified_tables=[]
+            if not error and result.returncode==0:
+                from app.sandbox.structured_outputs import verify_exports
+                exports_file=os.path.join(temp_dir,'analysis_tables.json')
+                if os.path.isfile(exports_file):
+                    try:
+                        with open(exports_file) as manifest:exports=json.load(manifest)
+                        if exports:
+                            verification_frame=dataframe
+                            if verification_frame is None:
+                                import pandas as pd
+                                if dataset_filepath.endswith('.csv'):verification_frame=pd.read_csv(dataset_filepath)
+                                elif dataset_filepath.endswith('.json'):verification_frame=pd.read_json(dataset_filepath)
+                                else:raise ValueError('Verified Python tables require the resolved input dataframe.')
+                            verified_tables=verify_exports(exports,verification_frame)
+                    except (ValueError,TypeError,KeyError) as invalid:error=str(invalid)
+            if not error and result.returncode == 0 and correlation_request is not None:
+                from app.analysis.correlation import validate_python_correlation
+                try:
+                    with open(os.path.join(temp_dir, 'correlations.json')) as manifest:
+                        correlations = json.load(manifest)
+                    structured_result = validate_python_correlation(correlations, dataframe, correlation_request)
+                except (ValueError, OSError) as validation_error:
+                    error = str(validation_error)
+            if not error and result.returncode == 0 and chart_expectation:
+                from app.analysis.chart_consistency import validate_captures
+                capture_path = os.path.join(temp_dir, 'captures.json')
+                captures = []
+                if os.path.isfile(capture_path):
+                    with open(capture_path) as manifest:
+                        captures = json.load(manifest)
+                try:
+                    validate_captures(captures, chart_expectation)
+                except ValueError as validation_error:
+                    error = str(validation_error)
+                else:
+                    with open(capture_path,'w') as file: json.dump(captures,file)
             artifacts = persist_captures(temp_dir, project_id) if not error and result.returncode == 0 else []
 
             success = len(error) == 0 and result.returncode == 0
@@ -157,7 +196,9 @@ class SandboxRunner:
                 "error": error if error else None,
                 "variables": variables,
                 "temp_dir": temp_dir,  # Return temp dir so caller can clean up
-                "artifacts": artifacts
+                "artifacts": artifacts,
+                "results": structured_result,
+                "verified_tables":verified_tables
             }
 
         except subprocess.TimeoutExpired:

@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 class QueryPlanner:
     @staticmethod
-    def plan_query(user_query: str, profile: Dict[str, Any]) -> Dict[str, Any]:
+    def plan_query(user_query: str, profile: Dict[str, Any], analysis_context=None) -> Dict[str, Any]:
         """
         Classifies user query intent using schema info.
         Returns plan dictionary containing intent, reasoning, and operation parameters.
@@ -31,6 +31,15 @@ class QueryPlanner:
             sample_rows=sample_rows,
             user_query=user_query
         )
+        from app.services.analysis_context import CONTEXT_INSTRUCTIONS
+        prompt += '\n' + CONTEXT_INSTRUCTIONS + '\nSuccessful analysis history (no raw rows):\n' + json.dumps(analysis_context or {'recent_successes':[]})
+        from app.services.metadata_service import MetadataService
+        catalog=MetadataService.get_catalog_index()
+        prompt += ('\nAUTHORITATIVE SOURCE CATALOG: active dataset ID is '+str(profile.get('dataset_id'))
+                   +'. Source tables and join endpoints MUST use exact IDs below. database.db in the schema example is illustrative, never a real database. '
+                   'Use actual column names from these tables. If the intended source is uncertain, ask for clarification.\n'
+                   +json.dumps({'tables':{name:{'columns':info.get('columns',[])} for name,info in catalog.get('tables',{}).items()},
+                                'relationships':catalog.get('relationships',[])}))
         
         logger.info(f"Classifying query intent: '{user_query}'")
         

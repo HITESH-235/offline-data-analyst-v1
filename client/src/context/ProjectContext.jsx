@@ -37,7 +37,7 @@ export const ProjectProvider = ({ children }) => {
     if (!response.ok) throw new Error('Could not delete this saved analysis. Try again.');
     setHistoryByProject(previous => ({ ...previous, [projectId]: (previous[projectId] || []).map(message => {
       if (message.id !== analysisId && message.savedMessageId !== analysisId) return message;
-      return { ...message, results: null, artifacts: [], analysis_deleted: true };
+      return { ...message, results: null, artifacts: [], analysis_package:null, analysis_deleted: true };
     }) }));
     window.dispatchEvent(new CustomEvent('analysis-deleted', { detail: { projectId, analysisId } }));
   };
@@ -219,7 +219,7 @@ export const ProjectProvider = ({ children }) => {
           for (const line of lines) {
             if (!line.trim()) continue;
             const event = JSON.parse(line);
-            if (event.stage === "completed" || event.stage === "failed") {
+            if (event.stage === "completed" || event.stage === "failed" || event.stage === "incomplete") {
               const result = event.result ?? {};
               updateReply({
                 ...result,

@@ -70,6 +70,7 @@ def list_saved_analyses(project_id: str, db: Session = Depends(get_db)):
             continue
         if not isinstance(metadata, dict):
             continue
+        if metadata.get('analysis_deleted'):continue
         result = metadata.get("results")
         artifacts = metadata.get("artifacts", [])
         if not artifacts and (not isinstance(result, dict) or not result.get("columns") or not isinstance(result.get("data"), list)):
@@ -77,7 +78,7 @@ def list_saved_analyses(project_id: str, db: Session = Depends(get_db)):
         calculation = metadata.get("calculation") or {}
         step = next((
             step for step in reversed(calculation.get("steps", []))
-            if step.get("status") == "succeeded" and (artifacts or step.get("tool") != "run_code")
+            if step.get("status") == "succeeded" and (artifacts or step.get("tool") != "run_code" or (isinstance(result, dict) and result.get('analysis_kind') == 'correlation'))
         ), {})
         # Legacy statistics responses included the input rows, not a result table.
         if not artifacts and step.get("tool") == "statistics" and step.get("parameters", {}).get("return_table") is not True:
@@ -89,8 +90,10 @@ def list_saved_analyses(project_id: str, db: Session = Depends(get_db)):
             "saved_at": message.created_at.isoformat() + "Z" if message.created_at else None,
             "result": result,
             "artifacts": artifacts,
-            "tables": step.get("tables", []),
+            "tables": list(dict.fromkeys(source for table in (metadata.get("analysis_package") or {}).get("tables",[]) for source in table.get("source",{}).get("tables",[]))) or step.get("tables", []),
             "calculation": calculation,
+            'analysisPackage':metadata.get('analysis_package'),
+            'analysisStatus':metadata.get('analysis_status'),
         })
     return snapshots
 
@@ -123,7 +126,7 @@ def delete_saved_analysis(project_id: str, analysis_id: str, db: Session = Depen
         with stage_artifact_deletion(project_id, owned - referenced):
             db.query(DBChatHistory).filter(DBChatHistory.id == analysis_id, DBChatHistory.project_id == project_id).update({
                 DBChatHistory.metadata_json: func.json_set(
-                    func.json_remove(DBChatHistory.metadata_json, '$.results', '$.chart_base64', '$.artifacts'),
+                    func.json_remove(DBChatHistory.metadata_json, '$.results', '$.chart_base64', '$.artifacts','$.analysis_package'),
                     '$.analysis_deleted', True)
             }, synchronize_session=False)
             db.commit()

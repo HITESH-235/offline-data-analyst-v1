@@ -20,7 +20,7 @@ def compute_statistics(df: pd.DataFrame, columns: List[str]) -> Dict[str, Any]:
             
         # Standard statistics
         mean_val = float(series.mean())
-        std_val = float(series.std())
+        std_val = float(series.std()) if len(series)>1 else None
         min_val = float(series.min())
         max_val = float(series.max())
         median_val = float(series.median())

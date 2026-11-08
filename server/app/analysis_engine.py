@@ -2,7 +2,7 @@
 AnalysisEngine: Executes structured analysis operations against a dataset.
 
 The agent sends tool parameters in a known format (defined in prompts.py),
-so we trust the structure and just pass it through with minimal cleanup.
+and arguments must be validated before any calculation is reported as successful.
 """
 
 import pandas as pd
@@ -66,6 +66,16 @@ class AnalysisEngine:
 
         sort_by = aggregation.get("sort_by")
         output_columns = [*groups, *measures] if measures else [*groups, "size"]
+        if not isinstance(aggregation.get('output_names',{}),dict) or not isinstance(aggregation.get('transforms',[]),list):
+            raise ValueError('output_names must be an object; transforms must be a list.')
+        output_columns += list(aggregation.get('output_names',{}).values())
+        output_columns += [t.get('as') for t in aggregation.get('transforms',[]) if isinstance(t,dict)]
+        output_columns += [t.get('name') for t in aggregation.get('derived_measures',[]) if isinstance(t,dict)]
+        if any(op=='count' for op in measures.values()):
+            from app.analysis.result_operations import human
+            import re
+            output_columns += [human(re.sub(r'[_ .]?id$','',c,flags=re.I))+' Count' for c,op in measures.items() if op=='count']
+            if len(measures)==1:output_columns.append('count')
         if sort_by is not None and sort_by not in output_columns:
             raise ValueError(f"Unknown sort column {sort_by!r}. Result columns: {', '.join(output_columns)}. {example}")
         if "ascending" in aggregation and not isinstance(aggregation["ascending"], bool):
@@ -88,11 +98,24 @@ class AnalysisEngine:
         plan = cls.normalize_plan(plan)
 
         results = {}
+        if 'comparison_summary' in plan:
+            if set(plan)!={'comparison_summary'}:raise ValueError('comparison_summary must execute as a complete calculation.')
+            from app.analysis.comparison_summary import calculate
+            return calculate(df,plan['comparison_summary'])
 
-        # 1. Apply Filtering
+        if "monthly_revenue" in plan:
+            from app.analysis.monthly_revenue import calculate_monthly_revenue
+            if set(plan) != {"monthly_revenue"}:
+                raise ValueError('monthly_revenue cannot be combined with other plan operations.')
+            return calculate_monthly_revenue(df,plan['monthly_revenue'])
+
+        # Validation is mandatory even for empty/malformed predicates and empty input.
         filters = plan.get("filters")
-        if filters:
+        if "filters" in plan:
             df = ana.filter_data(df, filters)
+            results["filter_audit"] = {"validated": True, "input_row_count":len(dataframe),
+                                       "matched_row_count":len(df), "unchanged":len(df)==len(dataframe),
+                                       "predicates":filters}
 
         # 2. Compute Statistics
         stats = plan.get("statistics")
@@ -102,32 +125,25 @@ class AnalysisEngine:
 
         # 3. Compute Correlation
         if plan.get("correlation"):
+            if plan.get('aggregation') or plan.get('statistics') or plan.get('visualization'):
+                raise ValueError('Request correlation as its own calculation; its result is the matrix, not raw rows.')
             method = plan.get("correlation_method", "pearson")
-            results["correlation"] = ana.compute_correlation(df, method=method)
+            from app.analysis.correlation import correlation_result
+            correlation = ana.compute_correlation(df, method=method, columns=plan.get('correlation_columns'))
+            return {**results, **correlation_result(correlation)}
 
         # 4. Apply Aggregation
         aggregation = plan.get("aggregation")
         if validate_tool_arguments and "aggregation" in plan:
             cls.validate_aggregation(aggregation, df.columns)
         if aggregation:
-            df = ana.aggregate_data(
-                df,
-                group_by=aggregation.get("group_by"),
-                aggregations=aggregation.get("aggregations"),
-                sort_by=aggregation.get("sort_by"),
-                ascending=aggregation.get("ascending", True)
-            )
+            from app.analysis.result_operations import apply_aggregation
+            return {**results,**apply_aggregation(df,aggregation)}
 
         # 5. Visualization blueprint
         viz = plan.get("visualization")
         if viz and viz.get("chart_type") and viz.get("x"):
-            results["visualization_blueprint"] = ana.prepare_chart_blueprint(
-                chart_type=viz["chart_type"],
-                x_col=viz["x"],
-                y_col=viz.get("y"),
-                color_col=viz.get("color"),
-                title=viz.get("title"),
-            )
+            raise ValueError('Visualization is presentation-only: attach it to an existing calculated output instead of reloading source rows.')
 
         # Statistics inform the narrative; they must not expose the unchanged
         # input dataframe as a newly calculated table.

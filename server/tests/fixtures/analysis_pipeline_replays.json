@@ -1,0 +1,175 @@
+[
+  {
+    "captured_message_id": "508d88c1-720c-4f82-ae5a-d3bdfac73a4f",
+    "question": "Count order_id by order_status. Return the measure as Order Count, sort descending, and show a bar chart.",
+    "steps": [
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "order_status"
+          ],
+          "aggregations": {
+            "order_id": "count"
+          },
+          "output_names": {
+            "order_id": "Order Count"
+          },
+          "sort_by": "Order Count",
+          "ascending": false
+        },
+        "status": "succeeded",
+        "tables": [
+          "olist.db::orders"
+        ],
+        "join_keys": []
+      },
+      {
+        "tool": "visualization",
+        "parameters": {
+          "chart_type": "bar",
+          "x": "order_status",
+          "y": "Order Count",
+          "title": "Order Count by Order Status"
+        },
+        "status": "succeeded",
+        "tables": [
+          "olist.db::orders"
+        ],
+        "join_keys": []
+      }
+    ]
+  },
+  {
+    "captured_message_id": "da55d2a0-a3e5-4e50-8186-7a2890698db4",
+    "question": "Sum payment_value_cents by payment_type and divide the totals by 100. Return clear BRL column names and show a bar chart.",
+    "steps": [
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "payment_type"
+          ],
+          "aggregations": {
+            "payment_value_cents": "sum"
+          },
+          "sort_by": "payment_value_cents",
+          "ascending": false,
+          "transforms": [
+            {
+              "column": "payment_value_cents",
+              "divide_by": 100,
+              "as": "Total Payment Value (BRL)",
+              "unit": "BRL"
+            }
+          ],
+          "output_names": {
+            "payment_value_cents": "Total Payment Value (cents)"
+          }
+        },
+        "status": "succeeded",
+        "tables": [
+          "olist.db::order_payments"
+        ],
+        "join_keys": []
+      },
+      {
+        "tool": "visualization",
+        "parameters": {
+          "chart_type": "bar",
+          "x": "payment_type",
+          "y": "Total Payment Value (BRL)",
+          "title": "Total Payment Value by Payment Type (BRL)"
+        },
+        "status": "succeeded",
+        "tables": [
+          "olist.db::order_payments"
+        ],
+        "join_keys": []
+      }
+    ]
+  },
+  {
+    "captured_message_id": "5f5523a5-0b6d-4cc8-bf06-a0ddfa3c2eda",
+    "question": "Join orders with customers on customer_id. Count orders by customer_state, name the measure Order Count, and sort descending. Return all states and show the top 10 in Chart.",
+    "steps": [
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "customer_state"
+          ],
+          "aggregations": {
+            "order_id": "count"
+          },
+          "output_names": {
+            "order_id": "Order Count"
+          },
+          "sort_by": "Order Count",
+          "ascending": false,
+          "limit": 10
+        },
+        "status": "succeeded",
+        "tables": [
+          "olist.db::orders",
+          "olist.db::customers"
+        ],
+        "join_keys": [
+          {
+            "from_table": "olist.db::orders",
+            "from_column": "customer_id",
+            "to_table": "olist.db::customers",
+            "to_column": "customer_id"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "captured_message_id": "11dc364e-c3a9-423c-80c0-050846996bd4",
+    "question": "Join order_financials with orders on order_id. Calculate total payment_total_cents divided by 100 in BRL by order_status. Also report how many orders lack payment records",
+    "steps": [
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "order_status"
+          ],
+          "aggregations": {
+            "payment_total_cents": "sum",
+            "order_id": "count",
+            "has_payments": "sum"
+          },
+          "transforms": [
+            {
+              "column": "payment_total_cents",
+              "divide_by": 100,
+              "as": "Total Payments (BRL)",
+              "unit": "BRL"
+            }
+          ],
+          "output_names": {
+            "order_id": "Total Orders",
+            "has_payments": "Orders With Payments",
+            "payment_total_cents": "Total Payments (BRL)"
+          },
+          "sort_by": "Total Payments (BRL)",
+          "ascending": false
+        },
+        "status": "succeeded",
+        "tables": [
+          "olist.db::order_financials",
+          "olist.db::orders"
+        ],
+        "join_keys": [
+          {
+            "from_table": "olist.db::order_financials",
+            "from_column": "order_id",
+            "to_table": "olist.db::orders",
+            "to_column": "order_id"
+          }
+        ]
+      }
+    ]
+  }
+]

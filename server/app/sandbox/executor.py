@@ -51,6 +51,18 @@ def run_isolated(data_path: str, code_content: str, output_dir: str):
     import plotly.express as px
     import plotly.graph_objects as go
 
+    correlation_captures = []
+    original_corr = pd.DataFrame.corr
+    def capture_correlation(frame, *args, **kwargs):
+        matrix = original_corr(frame, *args, **kwargs)
+        method = kwargs.get('method', args[0] if args else 'pearson')
+        if method in ('pearson', 'spearman'):
+            serializable = matrix.astype(object).where(pd.notna(matrix), None)
+            correlation_captures.append({'columns': list(matrix.columns), 'matrix': serializable.values.tolist(),
+                                         'method': method, 'source_observation_count': len(frame)})
+        return matrix
+    pd.DataFrame.corr = capture_correlation
+
     plt.rcParams.update({'figure.figsize': (11, 6), 'figure.dpi': 120, 'savefig.dpi': 180,
                          'figure.facecolor': 'white', 'axes.facecolor': 'white',
                          'text.color': '#14212B', 'axes.labelcolor': '#14212B',
@@ -73,6 +85,28 @@ def run_isolated(data_path: str, code_content: str, output_dir: str):
         return original_write_html(figure, os.path.join(output_dir, os.path.basename(str(file))), **kwargs)
     BaseFigure.write_html = capture_html
     BaseFigure.show = lambda figure, *args, **kwargs: captured_figures.append(figure)
+
+    # Record observations at plotting time; a raster image alone cannot prove its population.
+    from matplotlib.axes import Axes
+    from app.analysis.chart_consistency import population_summary
+    histogram_observations = {}
+    histogram_figures = {}
+    original_hist = Axes.hist
+    def record_hist(axis, x, *args, **kwargs):
+        result = original_hist(axis, x, *args, **kwargs)
+        try:
+            array = np.asarray(x)
+            groups = list(array.T) if isinstance(x, np.ndarray) and array.ndim == 2 else list(x) if array.ndim > 1 else [x]
+        except (TypeError,ValueError):
+            groups = list(x) if isinstance(x,(list,tuple)) else [x]
+        for group in groups:
+            try: summary = population_summary(group)
+            except (TypeError,ValueError): summary = {'count':None,'fingerprint':None,'reason':'Observations could not be verified.'}
+            summary['weighted'] = kwargs.get('weights') is not None or (len(args) > 3 and args[3] is not None)
+            histogram_observations.setdefault(id(axis.figure), []).append(summary)
+        histogram_figures[id(axis.figure)] = axis.figure
+        return result
+    Axes.hist = record_hist
 
     # Override plt.show with a no-op to prevent GUI window hangs in sandbox
     plt.show = lambda *args, **kwargs: None
@@ -98,6 +132,16 @@ def run_isolated(data_path: str, code_content: str, output_dir: str):
     try:
         # Run code
         exec(code_content, exec_globals)
+        exports=[]
+        declared=exec_globals.get('analysis_tables',{})
+        plans=exec_globals.get('analysis_plans',{})
+        if not isinstance(declared,dict) or not isinstance(plans,dict):raise ValueError('analysis_tables and analysis_plans must be dictionaries.')
+        for ident,table in declared.items():
+            if not isinstance(ident,str) or not isinstance(table,pd.DataFrame) or ident not in plans:raise ValueError('Each Python analysis table needs an ID, dataframe and canonical plan.')
+            clean=table.astype(object).where(pd.notna(table),None)
+            exports.append({'id':ident,'result':{'columns':list(table.columns),'data':clean.to_dict(orient='records'),'row_count':len(table)},'plan':plans[ident]})
+        with open(os.path.join(output_dir,'analysis_tables.json'),'w') as output:
+            json.dump(exports,output,allow_nan=False)
         
         captures = []
         figures = captured_figures + [value for value in exec_globals.values() if isinstance(value, BaseFigure)]
@@ -111,6 +155,14 @@ def run_isolated(data_path: str, code_content: str, output_dir: str):
                 figure_name = f'figure_{index}.json'
                 figure.write_json(os.path.join(output_dir, figure_name))
                 entry['figure'] = figure_name
+                histograms=[]
+                for trace in figure.data:
+                    if trace.type == 'histogram':
+                        observed = trace.y if trace.orientation == 'h' else trace.x
+                        summary = population_summary(observed if observed is not None else [])
+                        summary['weighted'] = trace.histfunc not in (None,'count')
+                        histograms.append(summary)
+                if histograms: entry['observations'] = histograms
                 point_types = {'scatter', 'scattergl', 'bar', 'histogram', 'box', 'violin'}
                 empty_points = bool(figure.data) and all(
                     trace.type in point_types and all(getattr(trace, key, None) is None or len(getattr(trace, key)) == 0
@@ -129,8 +181,9 @@ def run_isolated(data_path: str, code_content: str, output_dir: str):
                 stdout_buffer.write(f'Chart export failed: {export_error}')
             captures.append(entry)
 
-        for number in plt.get_fignums():
-            figure = plt.figure(number)
+        matplotlib_figures = {id(plt.figure(number)):plt.figure(number) for number in plt.get_fignums()}
+        matplotlib_figures.update(histogram_figures)
+        for number, figure in enumerate(matplotlib_figures.values(),1):
             if not figure.axes:
                 continue
             filename = f'matplotlib_{number}.png'
@@ -142,7 +195,8 @@ def run_isolated(data_path: str, code_content: str, output_dir: str):
                     image_width, image_height = image.size
                 captures.append({'kind': 'png', 'title': figure._suptitle.get_text() if figure._suptitle else figure.axes[0].get_title() or 'Generated image',
                                  'status': 'ready', 'download': filename,
-                                 'width': image_width, 'height': image_height})
+                                 'width': image_width, 'height': image_height,
+                                 'observations':histogram_observations.get(id(figure),[])})
             except Exception as capture_error:
                 stdout_buffer.write(f'PNG capture failed: {capture_error}')
         plt.close('all')
@@ -165,6 +219,8 @@ def run_isolated(data_path: str, code_content: str, output_dir: str):
                              'reason': 'No structured figure was captured. Download the HTML to inspect it separately.', 'download': 'output_chart.html'})
         with open(os.path.join(output_dir, 'captures.json'), 'w') as manifest:
             json.dump(captures, manifest)
+        with open(os.path.join(output_dir, 'correlations.json'), 'w') as manifest:
+            json.dump(correlation_captures, manifest, allow_nan=False)
             
     except Exception as e:
         error_occurred = str(e)

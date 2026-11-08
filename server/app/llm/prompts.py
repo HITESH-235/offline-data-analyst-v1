@@ -5,9 +5,11 @@
 PLANNER_SYSTEM_PROMPT = """You are the Router and Planner component of an Offline AI Data Analyst system.
 Your job is to analyze the user's question, inspect the dataset metadata, and classify the query into exactly one of three categories:
 
-1. "SIMPLE": The request can be fully satisfied using direct database filters, groupings, aggregations, descriptive statistics, or correlation matrices.
+1. "SIMPLE": The request can be fully satisfied using direct database filters, groupings, aggregations, descriptive statistics, correlation matrices or a validated comparison_summary (column-to-column comparison counts and percentage).
 2. "COMPLEX": The request is too complex for basic filters/aggregations and requires custom calculations, Python logic, pivot transformations, or plotting (e.g. data transformations, statistical models, distributions).
 3. "CONVERSATION": The request is a normal question or chat message that does not ask for analytical calculations on the dataset (e.g. greeting, general explanation, dataset schema explanation).
+
+For a date-comparison percentage, return operation.type="comparison_summary" and parameters with column (actual), value_column (comparison), operator, value_type:"date", date_part:"date" for calendar dates, and the exact field eligibility_filters (a predicate list). Use matched_label:"Late" for late delivery. For delivered/late analysis filter status="delivered"; the calculation itself counts missing actual and comparison dates. Never put a column name in a literal date value. This operation returns numerator, denominator and percentage in one calculation. If the operation cannot express the request, classify COMPLEX rather than retry incompatible literal filters.
 
 A declared SQLite foreign-key join can be prepared by the backend before a SIMPLE operation.
 For example, "Join Products and Order Details on ProductID, sum Quantity by ProductName, and sort from highest to lowest" is SIMPLE. The join does not require generated Python.
@@ -19,7 +21,7 @@ Expected JSON output format:
   "intent": "SIMPLE" | "COMPLEX" | "CONVERSATION",
   "reasoning": "A brief explanation of why this category was chosen.",
   "operation": {
-    "type": "aggregation" | "filtering" | "statistics" | "correlation" | "visualization" | null,
+    "type": "aggregation" | "filtering" | "statistics" | "correlation" | "visualization" | "comparison_summary" | null,
     "parameters": {
        "group_by": ["position"],
        "aggregations": {"market_value_eur": "mean", "age": "mean"},
@@ -85,6 +87,12 @@ You have these tools available:
    - aggregations: dict mapping column name to function (e.g. {{"salary": "mean"}})
    - sort_by: (optional) column name to sort results
    - ascending: (optional) true or false
+   - filters: optional validated row predicates, applied BEFORE aggregation.
+   - fill_missing: map grouping columns to missing-value labels, e.g. {{"product_category_name":"Unknown"}}. Null groups are retained.
+   - output_names: input measure → explicit output label, e.g. {{"order_id":"Order Count"}}. Count outputs are measures even when the input is an ID.
+   - transforms: list applied to AGGREGATED numeric values, e.g. [{{"column":"payment_value_cents","divide_by":100,"as":"Payments (BRL)","unit":"BRL"}}]. Currency conversions MUST change the structured result, never just prose. Do not divide again in final_answer.
+   - limit: optional integer result row limit, applied after sorting. Use limit:10 when the user requests the top 10 results. Returning all categories with a Top 10 chart is a different request.
+   Sorting accepts original measure names or final output labels. Filters, missing labels, grouping, transforms, aliases, sort and limit execute together in ONE aggregation call; do not call filtering first and assume its rows become the next tool's input.
    Use exact dataframe column names. Put the operation in the value of the
    aggregations mapping. Never use SQL expressions or invented table aliases.
    Example for Northwind Products joined to Order Details on ProductID:
@@ -94,7 +102,24 @@ You have these tools available:
 2. TOOL: "filtering"
    Use for: selecting rows that match conditions.
    Parameters:
-   - filters: list of conditions, each with "column", "operator" (>, <, ==, !=, >=, <=, contains), and "value"
+   - filters: a NON-EMPTY list of conditions, each with "column", "operator" (>, <, ==, !=, >=, <=, contains, in), and "value". Optional value_type: date, number, string, boolean.
+   - Date strings use ISO dates/timestamps and mixed date formats in a column are parsed strictly. Use a half-open year interval: >= 2022-01-01 and < 2023-01-01; <= 2022-12-31 omits later times on that date.
+   - Unsupported operators, missing columns, malformed values, or parsing failures are errors, never ignored predicates.
+   - Preview rows are not the entire dataset. Never infer an absent year from a preview or an unchanged filter result.
+   - Column references are EXPLICIT: replace value with value_column, e.g. {{"column":"order_delivered_customer_date","operator":">","value_column":"order_estimated_delivery_date","value_type":"date","date_part":"date"}}. Never put a column name in a literal date value. Null dates do not match; equality on the same calendar day is on time for strict >.
+
+   TOOL: "comparison_summary"
+   Use for: a comparison's eligible count, matched count and percentage, including late deliveries. Execute this instead of repeated raw filtering/aggregation calls.
+   Parameters: column, value_column, operator, optional value_type/date_part, eligibility_filters and matched_label (e.g. Late).
+   Example: {{"column":"order_delivered_customer_date","value_column":"order_estimated_delivery_date","operator":">","value_type":"date","date_part":"date","matched_label":"Late","eligibility_filters":[{{"column":"order_status","operator":"==","value":"delivered"}}]}}
+   It reports the filtered population, eligible non-null actual values, missing actual/comparison dates, comparable count (percentage denominator), matched count (numerator), and percentage. Date parsing errors fail explicitly. Missing comparison dates are excluded only from the percentage denominator and are reported separately.
+   Use custom Python for unsupported comparison shapes rather than retrying incompatible filtering. No partial filter result may be called a completed rate calculation.
+
+   TOOL: "monthly_revenue"
+   Use for: net line-item revenue by calendar month. Use this instead of returning raw filtered rows when the question asks for monthly revenue.
+   Parameters: year (integer), date_column, unit_price_column, quantity_column, discount_column (exact separate column names).
+   Example: {{"action":"tool_call","tool":"monthly_revenue","parameters":{{"year":2022,"date_column":"OrderDate","unit_price_column":"UnitPrice","quantity_column":"Quantity","discount_column":"Discount"}}}}
+   It validates all inputs, filters the full year, computes UnitPrice * Quantity * (1 - Discount), and returns only chronological monthly aggregates with verified row/date facts.
 
 3. TOOL: "statistics"
    Use for: computing descriptive statistics (mean, median, std, min, max, quartiles).
@@ -109,9 +134,13 @@ You have these tools available:
    Use for: computing correlation between numeric columns.
    Parameters:
    - method: "pearson" or "spearman"
+   - columns: exact numeric column names, in the requested order. For example: ["UnitPrice", "Quantity", "Discount"]. Exclude identifiers unless explicitly requested.
+   Returns the correlation matrix as the structured Table result, with source observation count separately. Open result renders this SAME matrix as a heatmap in Chart; no additional visualization tool call is needed.
+   Pearson measures linear association: near-zero coefficients do NOT establish independence or exclude nonlinear relationships. Spearman measures monotonic association, not independence.
 
 5. TOOL: "visualization"
    Use for: creating a chart/graph.
+   This tool's blueprint parameters are separate from Open result's display capabilities. Open result supports bar, line, scatter, histogram, box, and correlation heatmap charts. Never claim heatmaps are unavailable because they are absent from this blueprint tool's list.
    Parameters:
    - chart_type: "bar", "line", "scatter", "pie", "histogram"
    - x: column name for x-axis
@@ -150,6 +179,8 @@ You have ONE tool available:
    Rules:
    - Date columns may mix YYYY-MM-DD and YYYY-MM-DD HH:MM:SS. Use pd.to_datetime(df['OrderDate'], format='mixed', errors='raise') when parsing mixed ISO dates. Never silently discard dates with errors='coerce' without reporting how many were lost.
    - Before plotting a filtered/grouped result, check that it contains observations. An empty plot is not a successful answer; report the empty result and investigate parsing/filter errors. Sort monthly groups chronologically before plotting.
+   - Keep calculation, narrative, and plotted population identical. "Individual order totals" means SUM(UnitPrice * Quantity * (1 - Discount)) grouped by OrderID; individual order-line amounts are a different population.
+   - Export each intended calculation under its stable output_id. Multiple related outputs are allowed. Captured images alone are exports, not validated final calculation evidence.
    - Use print() to output any results.
    - MATHEMATICAL ACCURACY: Always use explicit parentheses `(...)` around addition/subtraction in numerators before dividing (e.g. `(df['goals'] + df['assists']) / df['minutes_played']`). Never write `a + b / c` without parentheses!
    - Save matplotlib charts to "output_chart.png".
@@ -227,3 +258,23 @@ INTERPRETER_USER_TEMPLATE = """User Query:
 Raw Calculated Data Results:
 {raw_results}
 """
+
+
+from app.analysis.comparison_summary import contract_instructions as _comparison_contract
+PLANNER_SYSTEM_PROMPT += "\n" + _comparison_contract()
+SIMPLE_TOOLS_PROMPT += "\n" + _comparison_contract()
+
+ANALYSIS_CONTRACT_INSTRUCTIONS = '''
+For analytical requests, return completion_contract alongside intent/context fields.
+It describes the requested calculation, independently of chart presentation:
+{"outputs":[{"id":"status_counts","kind":"aggregation","group_by":["status"],"measures":[{"source_column":"record_id","operation":"count","output":"Record Count"}],"scope":{"mode":"all"}}],"chart_scope":{"required":true,"top_n":10}}
+Use actual fields from the catalog. Output kinds match calculation types: aggregation, filtering, correlation, comparison_summary, calendar_aggregate, monthly_revenue, or statistics. Each distinct requested table/metric set needs an output specification and stable id. For aggregation always provide group_by (empty for grand totals), measures, scope, and filters (empty when no predicates are requested). Optional columns/source_tables further constrain the output. Measures can specify source_column, operation, output, unit, divide_by, and derived. A requested derived metric must be explicitly listed, not merely derivable from other columns.
+Result scope is {"mode":"all"} when all groups are requested, regardless of the noun (states, teams, regions, products, etc.). A Top N CHART does not limit the result. An actual top-N result uses {"mode":"top","limit":N}. chart_scope is separate and supports required and top_n (5/10/20).
+For cents converted to BRL, require the actual output unit BRL and divide_by:100. For missing counts, require a derived measure computed from the aggregate counts. For multiple related outputs list all of them; success requires every requested output. Do not classify execution or image generation alone as successful completion. If you cannot identify the requested metric/population, ask for clarification.
+'''
+PLANNER_SYSTEM_PROMPT += '\n'+ANALYSIS_CONTRACT_INSTRUCTIONS
+SIMPLE_TOOLS_PROMPT += '''\nEach tool call may set output_id to a requested completion-contract output ID. Multiple calculations may produce multiple related outputs. A successful replacement of that output must still satisfy its requirements. visualization attaches a specification to a calculated result, never raw data. Reuse final output field names and do not call visualization to recompute data. Aggregation supports derived_measures:[{"name":"Missing Count","expression":{"op":"subtract","args":[{"column":"Total Count"},{"column":"Present Count"}]},"unit":"records"}]. Columns in derived expressions reference final aggregate aliases. All requested measures must be computed. Final prose is a draft: factual numbers come only from the published package.\n'''
+COMPLEX_TOOLS_PROMPT += '''\nFor verified structured Python outputs, set analysis_tables={"output_id": dataframe} and analysis_plans={"output_id":{"tool":"aggregation","parameters":{...}}}. Use the same canonical analysis operations/parameters as built-in tools. The backend recomputes each declared plan on the resolved input and checks your returned values. Multiple tables are supported. Charts/printed text without validated calculation outputs remain incomplete; do not claim they prove success.\n'''
+
+COMPLEX_TOOLS_PROMPT += '\nCanonical Python export plans support aggregation, comparison_summary, correlation, and monthly_revenue. Aggregation parameters: group_by, aggregations (column: operation), output_names, transforms (column/divide_by/as/unit), fill_missing, filters, sort_by, ascending, limit, derived_measures. Correlation parameters: columns and method. Other requested Python operations without a supported verifiable export plan must be reported incomplete.\n'+_comparison_contract()
+COMPLEX_TOOLS_PROMPT += '\nExample verified export: summary=df.groupby("region",dropna=False)["revenue"].sum().reset_index(); analysis_tables={"sales":summary}; analysis_plans={"sales":{"tool":"aggregation","parameters":{"group_by":["region"],"aggregations":{"revenue":"sum"}}}}. Use actual requested columns and output IDs. Each plan is recomputed against the ORIGINAL resolved df, so include all filters and transformations in that plan.\n'

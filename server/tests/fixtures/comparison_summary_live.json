@@ -1,0 +1,13 @@
+{
+  "question": "Among delivered orders, calculate the percentage whose order_delivered_customer_date is after order_estimated_delivery_date. Compare calendar dates, report missing actual and estimated dates separately, and exclude missing dates from comparisons.",
+  "dataset_id": "olist.db::orders",
+  "parameters": {
+    "column": "order_delivered_customer_date",
+    "value_column": "order_estimated_delivery_date",
+    "operator": ">",
+    "value_type": "date",
+    "date_part": "date",
+    "matched_label": "Late",
+    "eligibility_filters": [{"column": "order_status", "operator": "=", "value": "delivered"}]
+  }
+}
