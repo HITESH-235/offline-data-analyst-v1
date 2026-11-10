@@ -23,7 +23,7 @@ def parse_dates(series, column):
 def _predicate(df, condition):
     if isinstance(condition,dict) and 'value_column' in condition:
         return column_comparison(df,condition)
-    if not isinstance(condition, dict) or not {'column', 'operator', 'value'} <= condition.keys() or set(condition) - {'column','operator','value','value_type'}:
+    if not isinstance(condition, dict) or not {'column', 'operator', 'value'} <= condition.keys() or set(condition) - {'column','operator','value','value_type','date_part'}:
         raise ValueError(f'Each filter requires column, operator, and value; optional value_type is supported. {EXAMPLE}')
     column, operator, value = condition['column'], condition['operator'], condition['value']
     if not isinstance(column, str) or column not in df.columns:
@@ -48,10 +48,12 @@ def _predicate(df, condition):
         if operator == 'contains':
             raise ValueError('contains is not a date comparison.')
         series = parse_dates(series, column)
+        if condition.get('date_part')=='date':series=series.dt.normalize()
         try:
             converted = pd.to_datetime(values, format='mixed', errors='raise', utc=True)
         except (TypeError, ValueError, OverflowError):
             raise ValueError(f'Invalid date filter values for {column!r}. {EXAMPLE}') from None
+        if condition.get('date_part')=='date':converted=converted.normalize()
         if converted.isna().any():
             raise ValueError('Date comparison values cannot be null.')
         value = list(converted) if operator == 'in' else converted[0]
@@ -107,8 +109,10 @@ def column_comparison(df,condition):
 
 
 def filter_data(df, filters):
-    if not isinstance(filters, list) or not filters:
-        raise ValueError(f'filters must be a non-empty list of predicates. {EXAMPLE}')
+    if not isinstance(filters, list):
+        raise ValueError(f'filters must be a list of predicates (empty means no predicates). {EXAMPLE}')
+    from app.analysis.operations import validate
+    filters=validate('filtering',{'filters':filters},'$.filtering').get('filters',[])
     # Validate every predicate against the full schema, even if another matches no rows.
     masks = [_predicate(df, condition) for condition in filters]
     mask = pd.Series(True, index=df.index)

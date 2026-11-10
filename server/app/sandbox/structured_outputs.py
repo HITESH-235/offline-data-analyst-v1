@@ -1,7 +1,7 @@
 """Validate explicit Python table exports against canonical calculation plans."""
 import numpy as np
 import pandas as pd
-from app.analysis_engine import AnalysisEngine
+from app.analysis.operations import execute
 from app.services.analysis_package import validate_table
 
 
@@ -16,9 +16,7 @@ def verify_exports(exports,frame):
         if not isinstance(plan,dict) or set(plan)!={'tool','parameters'} or plan['tool'] not in {'aggregation','comparison_summary','correlation','monthly_revenue'}:
             raise ValueError('Python output requires a supported canonical calculation plan.')
         tool=plan['tool'];p=plan['parameters']
-        operation={tool:p}
-        if tool=='correlation':operation={'correlation':True,'correlation_method':p.get('method','pearson'),'correlation_columns':p.get('columns')}
-        expected=AnalysisEngine.execute_plan(None,'prepared',operation,dataframe=frame,validate_tool_arguments=True)
+        expected=execute(tool,p,frame)
         actual=export['result'];validate_table(actual)
         if actual['columns']!=expected['columns'] or len(actual['data'])!=len(expected['data']):raise ValueError('Python table shape differs from its declared calculation.')
         for left,right in zip(actual['data'],expected['data']):

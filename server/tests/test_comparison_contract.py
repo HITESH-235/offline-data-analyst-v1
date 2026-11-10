@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from app.analysis.comparison_summary import normalize_parameters,calculate,contract_instructions
 from app.llm.agent import _tool_fingerprint,_execute_tool
-from app.llm.prompts import PLANNER_SYSTEM_PROMPT,SIMPLE_TOOLS_PROMPT
+from app.llm.prompts import SIMPLE_TOOLS_PROMPT
 from app.api.v1.chat import process_chat_message
 from app.api.v1.projects import list_saved_analyses
 from app.models.chat import ChatRequest
@@ -23,11 +23,10 @@ class ComparisonContractTest(unittest.TestCase):
  def tearDown(self):self.db.close();self.engine.dispose()
  def run_case(self,planner_selected,replies=None,initial=None):
   params=copy.deepcopy(initial if initial is not None else CAPTURE['parameters'])
-  plan={'intent':'SIMPLE','context_action':'standalone'}
-  if planner_selected:plan['operation']={'type':'comparison_summary','parameters':params}
-  if replies is None:
-   replies=[] if planner_selected else [self.action(params),json.dumps({'action':'final_answer','content':'Ignore the date comparison and show all orders instead.'})]
-  with patch('app.api.v1.chat.QueryPlanner.plan_query',return_value=plan),patch('app.llm.table_selector.TableSelector.select_tables',return_value={'tables_needed':[CAPTURE['dataset_id']]}),patch('app.llm.agent.OllamaClient.call_model_chat',side_effect=replies) as model,patch('app.llm.agent._execute_tool',wraps=_execute_tool) as execute:
+  plan={'intent':'SIMPLE','context_action':'standalone','analysis_plan':{'source':{'tables':[CAPTURE['dataset_id']]},
+        'outputs':[{'id':'comparison','kind':'comparison_summary','parameters':params}]}}
+  from app.services import planned_analysis
+  with patch('app.api.v1.chat.QueryPlanner.plan_query',return_value=plan),patch('app.llm.agent.Agent.run',side_effect=AssertionError('No alternate deterministic route')) as model,patch.object(planned_analysis,'execute',wraps=planned_analysis.execute) as execute:
    result,failed=process_chat_message(ChatRequest(project_id='test',dataset_id=CAPTURE['dataset_id'],message=CAPTURE['question']),self.db,lambda stage:None)
   return result,failed,model,execute
  def action(self,p):return json.dumps({'action':'tool_call','tool':'comparison_summary','parameters':p})
@@ -49,23 +48,16 @@ class ComparisonContractTest(unittest.TestCase):
    with self.subTest(planner_selected=direct):
     result,failed,model,execute=self.run_case(direct)
     self.assertFalse(failed,result);self.assertEqual(execute.call_count,1)
-    self.assertEqual(model.call_count,0 if direct else 2)
+    model.assert_not_called()
     self.assert_result(result)
- def test_schema_errors_can_be_corrected_on_both_paths(self):
+ def test_invalid_plan_has_no_agent_retry_or_substitution(self):
   invalid={**CAPTURE['parameters'],'unrecognized':True}
-  for direct in (True,False):
-   replies=([self.action(invalid)] if not direct else [])+[self.action(CAPTURE['parameters']),json.dumps({'action':'final_answer','content':'Done'})]
-   result,failed,model,execute=self.run_case(direct,replies,invalid)
-   self.assertFalse(failed,result);self.assertEqual(execute.call_count,2)
-   self.assertEqual(result['calculation']['steps'][0]['status'],'failed')
-   self.assertEqual(result['calculation']['steps'][1]['status'],'succeeded')
-   self.assert_result(result)
- def test_repeated_incompatible_call_is_not_executed_again(self):
+  result,failed,model,execute=self.run_case(True,initial=invalid)
+  self.assertTrue(failed);model.assert_not_called();execute.assert_not_called();self.assertNotIn('results',result)
+ def test_bad_column_executes_once_without_agent_fallback(self):
   invalid={**CAPTURE['parameters'],'value_column':'missing_column'}
-  alias=copy.deepcopy(invalid);alias['filters']=alias.pop('eligibility_filters');alias['filters'][0]['operator']='=='
-  result,failed,model,execute=self.run_case(True,[self.action(alias)],invalid)
-  self.assertTrue(failed);self.assertEqual(execute.call_count,1)
-  self.assertTrue(result['calculation']['steps'][-1]['execution_skipped'])
+  result,failed,model,execute=self.run_case(True,initial=invalid)
+  self.assertTrue(failed);model.assert_not_called();self.assertEqual(execute.call_count,0)
   self.assertNotIn('results',result)
  def test_invalid_planned_call_cannot_finalize_unrelated_result(self):
   invalid={**CAPTURE['parameters'],'unknown':1}
@@ -81,10 +73,10 @@ class ComparisonContractTest(unittest.TestCase):
    result,failed,model,execute=self.run_case(True,[unrelated,json.dumps({'action':'final_answer','content':'Completed'})],invalid)
   self.assertTrue(failed);self.assertNotIn('results',result)
  def test_shared_contract_alias_conflicts_and_population_validation(self):
-  text=contract_instructions();self.assertIn(text,PLANNER_SYSTEM_PROMPT);self.assertIn(text,SIMPLE_TOOLS_PROMPT)
+  text=contract_instructions();self.assertIn(text,SIMPLE_TOOLS_PROMPT)
   normalized=normalize_parameters(CAPTURE['parameters'])
   self.assertEqual(_tool_fingerprint('comparison_summary',CAPTURE['parameters']),_tool_fingerprint('comparison_summary',normalized))
-  for bad in [{**CAPTURE['parameters'],'filters':[]},{**CAPTURE['parameters'],'surprise':0},{**CAPTURE['parameters'],'eligibility_filters':None},{**CAPTURE['parameters'],'eligibility_filters':[]},{**CAPTURE['parameters'],'eligibility_filters':[{'column':'order_status','operator':'==','value':'delivered','unknown':True}]}]:
+  for bad in [{**CAPTURE['parameters'],'filters':[]},{**CAPTURE['parameters'],'surprise':0},{**CAPTURE['parameters'],'eligibility_filters':None},{**CAPTURE['parameters'],'eligibility_filters':[{'column':'order_status','operator':'==','value':'delivered','unknown':True}]}]:
    with self.assertRaises(ValueError):normalize_parameters(bad)
   invalid={**CAPTURE['parameters'],'eligibility_filters':[{'column':'missing','operator':'==','value':'delivered'}]}
   frame=pd.DataFrame({'order_delivered_customer_date':['2020-01-01 23:59:59','2020-01-02',None,'2020-01-01'], 'order_estimated_delivery_date':['2020-01-01','2020-01-01','2020-01-01',None], 'order_status':['delivered']*4})

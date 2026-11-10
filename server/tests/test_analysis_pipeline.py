@@ -23,11 +23,24 @@ class PipelineReplayTest(unittest.TestCase):
  def tearDown(self):self.db.close();self.engine.dispose()
  def send(self,question,steps,specs,chart=None,selection=None,intent='SIMPLE'):
   selection=selection or {'tables_needed':steps[0]['tables'],'join_keys':steps[0].get('join_keys',[])}
-  plan={'intent':intent,'context_action':'standalone','completion_contract':{'outputs':specs,**({'chart_scope':chart} if chart else {})}}
+  contract={'outputs':specs,**({'chart_scope':chart} if chart else {})}
+  if intent=='COMPLEX':plan={'intent':intent,'context_action':'standalone','request_requirements':contract}
+  else:
+   from app.services.analysis_package import apply_output_contract
+   outputs=[]
+   for step in steps:
+    if step['tool']=='visualization':continue
+    params=copy.deepcopy(step['parameters']);ident=params.pop('output_id',None) or specs[len(outputs)]['id']
+    params=apply_output_contract(params,contract,ident) if step['tool']=='aggregation' else params
+    outputs.append({'id':ident,'kind':step['tool'],'parameters':params,
+                    'source':{'tables':step['tables'],'join_keys':step.get('join_keys',[])}})
+   plan={'intent':intent,'context_action':'standalone','analysis_plan':{'source':outputs[0]['source'],'outputs':outputs,'chart_scope':chart or {}}}
+  if intent=='SIMPLE':plan['request_requirements']=contract # Legacy structured capture, not a new planner schema.
   replies=[json.dumps({'action':'tool_call','tool':s['tool'],'parameters':s['parameters']}) for s in steps]+[json.dumps({'action':'final_answer','content':'I verified 999999 orders; correlation proves independence.'})]
   with patch('app.llm.client.OllamaClient.call_model',side_effect=[json.dumps(plan),json.dumps(selection)]) as routing,patch('app.llm.agent.OllamaClient.call_model_chat',side_effect=replies):
    result,failed=process_chat_message(ChatRequest(project_id='p',dataset_id=selection['tables_needed'][0],message=question),self.db,lambda s:None)
-  self.assertEqual(routing.call_count,2)
+  if failed:self.assertLessEqual(routing.call_count,2)
+  else:self.assertEqual(routing.call_count,2 if intent=='COMPLEX' else 1)
   self.assertNotIn('999999',result['content']);self.assertNotIn('proves independence',result['content'])
   metadata=json.loads(self.db.get(DBChatHistory,result['id']).metadata_json)
   self.assertEqual(metadata['analysis_package'],result['analysis_package'])
@@ -105,7 +118,10 @@ class PipelineReplayTest(unittest.TestCase):
   keys=[{'from_table':tables[0],'from_column':'order_id','to_table':tables[1],'to_column':'order_id'}]
   state={'source':{'tables':tables,'join_keys':keys},'metric':{'name':'Paid Total (BRL)','unit':'BRL','aggregation':'sum','expression':{'op':'multiply','args':[{'column':'payment_total_cents'},{'value':0.01}]}},'date_column':'order_purchase_timestamp','years':[2017],'grain':'month','compare':False,'filters':[{'column':'has_payments','operator':'==','value':1}],'output':{'table':True,'chart':'line'}}
   def send(question,state,inherit=False):
-   plan={'intent':'SIMPLE','context_action':'inherit' if inherit else 'standalone','resolved_analysis':state}
+   plan={'intent':'SIMPLE','context_action':'inherit' if inherit else 'standalone','analysis_plan':{'source':state['source'],'outputs':[{'id':'calendar','kind':'calendar_aggregate','parameters':state}]}}
+   if inherit:
+    prior=load_context(self.db,'p')['recent_successes'][0];plan['reference_message_id']=prior['message_id']
+    old=prior['analysis']['plan']['outputs'][0]['parameters'];plan['changed_fields']=[k for k in ('grain','years','compare') if state.get(k)!=old.get(k)]
    with patch('app.llm.client.OllamaClient.call_model',return_value=json.dumps(plan)),patch('app.llm.agent.OllamaClient.call_model_chat') as model:
     r,failed=process_chat_message(ChatRequest(project_id='p',dataset_id=tables[0],message=question),self.db,lambda stage:None)
    self.assertFalse(failed,r['content']);model.assert_not_called();return r
@@ -116,12 +132,12 @@ class PipelineReplayTest(unittest.TestCase):
   last=send('Compare these periods with the following year.',comparison,True)
   # A failed turn must not replace the successful comparison.
   bad=copy.deepcopy(comparison);bad['date_column']='missing_timestamp'
-  with patch('app.llm.client.OllamaClient.call_model',return_value=json.dumps({'intent':'SIMPLE','context_action':'inherit','resolved_analysis':bad})):
+  with patch('app.llm.client.OllamaClient.call_model',return_value=json.dumps({'intent':'SIMPLE','context_action':'inherit','analysis_plan':{'source':bad['source'],'outputs':[{'id':'calendar','kind':'calendar_aggregate','parameters':bad}]}})):
    failure,failed=process_chat_message(ChatRequest(project_id='p',dataset_id=tables[0],message='Use a nonexistent timestamp.'),self.db,lambda stage:None)
   self.assertTrue(failed)
   self.db.close();self.db=Session(self.engine)
   self.assertEqual(load_context(self.db,'p')['recent_successes'][0]['message_id'],last['id'])
-  monthly=send('Show that monthly instead.',{'grain':'month'},True)
+  monthly=send('Show that monthly instead.',{**comparison,'grain':'month'},True)
   result=monthly['results'];self.assertEqual(result['row_count'],12);self.assertEqual(len(result['calendar_chart']['series']),2)
   with sqlite3.connect(DatasetManager.get_dataset(None,tables[0]).filepath) as db:
    expected=db.execute("SELECT CAST(strftime('%Y',o.order_purchase_timestamp) AS INT),CAST(strftime('%m',o.order_purchase_timestamp) AS INT),SUM(f.payment_total_cents)/100.0 FROM order_financials f JOIN orders o ON f.order_id=o.order_id WHERE f.has_payments=1 AND strftime('%Y',o.order_purchase_timestamp) IN ('2017','2018') GROUP BY 1,2 ORDER BY 1,2").fetchall()
@@ -138,7 +154,7 @@ class PipelineReplayTest(unittest.TestCase):
   from app.core.config import settings
   with tempfile.TemporaryDirectory() as root:
    Path(root,'measurements.csv').write_text('value\n4\n')
-   steps=[{'tool':'statistics','parameters':{'columns':['value']},'tables':['measurements.csv']}]
+   steps=[{'tool':'statistics','parameters':{'columns':['value'],'statistics':['mean']},'tables':['measurements.csv']}]
    with patch.object(settings,'DATASETS_DIR',root),patch('app.api.v1.chat.MetadataService.get_profile',return_value={'columns':['value']}),patch('app.services.metadata_service.MetadataService.get_catalog_index',return_value={'tables':{'measurements.csv':{'columns':['value']}},'relationships':[]}):
     r,failed=self.send('Summarize the measurement without a chart.',steps,[{'id':'summary','kind':'statistics','columns':['value'],'measures':[{'source_column':'value','operation':'mean'}]}])
    self.assertFalse(failed,r['content']);self.assertNotIn('results',r);self.assertEqual(r['analysis_package']['charts'],[]);self.assertEqual(r['analysis_package']['facts'][0]['statistics']['value']['mean'],4)
@@ -152,7 +168,7 @@ class PipelineReplayTest(unittest.TestCase):
   Base.metadata.create_all(engine);factory=sessionmaker(bind=engine)
   with factory() as db:db.add(DBProject(id='stream',name='Stream'));db.commit()
   request=ChatRequest(project_id='stream',dataset_id='olist.db::orders',message='Count orders for each status.')
-  plan={'intent':'SIMPLE','completion_contract':{'outputs':[{'id':'counts','kind':'aggregation','group_by':['order_status'],'measures':[{'source_column':'order_id','operation':'count'}]}]}}
+  plan={'intent':'SIMPLE','analysis_plan':{'source':{'tables':['olist.db::orders']},'outputs':[{'id':'counts','kind':'aggregation','parameters':{'group_by':['order_status'],'aggregations':{'order_id':'count'}}}]}}
   action={'action':'tool_call','tool':'aggregation','parameters':{'group_by':['order_status'],'aggregations':{'order_id':'count'}}}
   async def consume():
    response=await stream_chat_message(request)
@@ -160,9 +176,9 @@ class PipelineReplayTest(unittest.TestCase):
   try:
    for calculated,terminal in [(True,'completed'),(False,'incomplete')]:
     responses=([json.dumps(action)] if calculated else [])+[json.dumps({'action':'final_answer','content':'Done'})]
-    with patch('app.api.v1.chat.SessionLocal',factory),patch('app.llm.client.OllamaClient.call_model',side_effect=[json.dumps(plan),json.dumps({'tables_needed':['olist.db::orders']})]),patch('app.llm.agent.OllamaClient.call_model_chat',side_effect=responses):
+    with patch('app.api.v1.chat.SessionLocal',factory),patch('app.llm.client.OllamaClient.call_model',return_value=json.dumps(plan if calculated else {'intent':'SIMPLE'})),patch('app.llm.agent.OllamaClient.call_model_chat',side_effect=responses):
      events=asyncio.run(consume())
-    self.assertEqual(events[-1]['stage'],terminal);self.assertIn('selecting_tables',[e['stage'] for e in events[:-1]])
+    self.assertEqual(events[-1]['stage'],terminal);self.assertIn('validating',[e['stage'] for e in events[:-1]])
     pack=events[-1]['result']['analysis_package'];self.assertEqual(pack['status'],'complete' if calculated else 'incomplete')
     if calculated:self.assertEqual(sum(row['Order Count'] for row in pack['tables'][0]['result']['data']),99441)
   finally:engine.dispose()

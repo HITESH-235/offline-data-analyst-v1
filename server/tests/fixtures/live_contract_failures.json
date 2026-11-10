@@ -1,0 +1,354 @@
+[
+  {
+    "case": "Q02",
+    "evidence_kind": "actual 2026-11-08 baseline capture",
+    "question": "For every ShipCountry, how many different CustomerID values occur in Orders? Count a customer once per shipping country even if they placed many orders. List every country from highest distinct-customer count to lowest; a table is sufficient.",
+    "contract": {
+      "outputs": [
+        {
+          "id": "distinct_customers_by_country",
+          "kind": "aggregation",
+          "group_by": [
+            "ShipCountry"
+          ],
+          "measures": [
+            {
+              "source_column": "CustomerID",
+              "operation": "count_distinct",
+              "output": "Distinct Customer Count"
+            }
+          ],
+          "scope": {
+            "mode": "all"
+          },
+          "filters": []
+        }
+      ],
+      "chart_scope": {
+        "required": false
+      }
+    },
+    "steps": [
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "ShipCountry"
+          ],
+          "aggregations": {
+            "CustomerID": "count_distinct"
+          },
+          "output_names": {
+            "CustomerID": "Distinct Customer Count"
+          },
+          "sort_by": "Distinct Customer Count",
+          "ascending": false
+        },
+        "status": "failed",
+        "tables": [
+          "northwind.db::Orders"
+        ],
+        "join_keys": [],
+        "error": "Tool 'aggregation' failed: Unsupported operation 'count_distinct' for 'CustomerID'. Supported operations: mean, sum, count, min, max. Expected exact dataframe names, e.g. {\"group_by\":[\"ProductName\"],\"aggregations\":{\"Quantity\":\"sum\"},\"sort_by\":\"Quantity\",\"ascending\":false}."
+      },
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "ShipCountry"
+          ],
+          "aggregations": {
+            "CustomerID": "count"
+          },
+          "output_names": {
+            "CustomerID": "Distinct Customer Count"
+          },
+          "sort_by": "Distinct Customer Count",
+          "ascending": false
+        },
+        "status": "succeeded",
+        "tables": [
+          "northwind.db::Orders"
+        ],
+        "join_keys": []
+      },
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "ShipCountry"
+          ],
+          "aggregations": {
+            "CustomerID": "count"
+          },
+          "output_names": {
+            "CustomerID": "Distinct Customer Count"
+          },
+          "sort_by": "Distinct Customer Count",
+          "ascending": false
+        },
+        "status": "succeeded",
+        "tables": [
+          "northwind.db::Orders"
+        ],
+        "join_keys": []
+      }
+    ]
+  },
+  {
+    "case": "Q04",
+    "evidence_kind": "actual 2026-11-08 baseline capture",
+    "question": "Keep that same sales definition and year, but roll the months up into calendar quarters. Please calculate the four quarterly amounts and use a line chart.",
+    "contract": {
+      "outputs": [
+        {
+          "id": "quarterly_net_sales",
+          "kind": "calendar_aggregate",
+          "group_by": [
+            "OrderDate"
+          ],
+          "measures": [
+            {
+              "source_column": "UnitPrice",
+              "operation": "sum",
+              "output": "Net Sales",
+              "derived": {
+                "op": "multiply",
+                "args": [
+                  {
+                    "column": "UnitPrice"
+                  },
+                  {
+                    "column": "Quantity"
+                  },
+                  {
+                    "op": "subtract",
+                    "args": [
+                      {
+                        "value": 1
+                      },
+                      {
+                        "column": "Discount"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "scope": {
+            "mode": "all"
+          },
+          "filters": []
+        }
+      ],
+      "chart_scope": {
+        "required": true,
+        "top_n": 10
+      }
+    },
+    "steps": [
+      {
+        "tool": "calendar_aggregate",
+        "parameters": {
+          "source": {
+            "tables": [
+              "northwind.db::Orders",
+              "northwind.db::Order Details"
+            ],
+            "join_keys": [
+              {
+                "from_table": "northwind.db::Orders",
+                "from_column": "OrderID",
+                "to_table": "northwind.db::Order Details",
+                "to_column": "OrderID"
+              }
+            ],
+            "database": "northwind.db"
+          },
+          "metric": {
+            "name": "Net Sales",
+            "aggregation": "sum",
+            "expression": {
+              "op": "multiply",
+              "args": [
+                {
+                  "column": "UnitPrice"
+                },
+                {
+                  "column": "Quantity"
+                },
+                {
+                  "op": "subtract",
+                  "args": [
+                    {
+                      "value": 1
+                    },
+                    {
+                      "column": "Discount"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "date_column": "OrderDate",
+          "years": [
+            2021
+          ],
+          "grain": "quarter",
+          "compare": false,
+          "filters": [],
+          "output": {
+            "table": true,
+            "chart": "line"
+          }
+        },
+        "status": "succeeded",
+        "tables": [
+          "northwind.db::Orders",
+          "northwind.db::Order Details"
+        ],
+        "join_keys": [
+          {
+            "from_table": "northwind.db::Orders",
+            "from_column": "OrderID",
+            "to_table": "northwind.db::Order Details",
+            "to_column": "OrderID"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "case": "Q10",
+    "evidence_kind": "actual 2026-11-08 baseline capture",
+    "question": "Audit payment coverage in order_financials without joining any line-item tables. Return three explicit numbers: total orders, orders with at least one payment record, and orders with no payment record. Calculate the missing count rather than leaving me to subtract it; a compact table is enough.",
+    "contract": {
+      "outputs": [
+        {
+          "id": "total_orders",
+          "kind": "aggregation",
+          "group_by": [],
+          "measures": [
+            {
+              "source_column": "order_id",
+              "operation": "count",
+              "output": "Total Orders"
+            }
+          ],
+          "scope": {
+            "mode": "all"
+          },
+          "filters": []
+        },
+        {
+          "id": "orders_with_payment",
+          "kind": "aggregation",
+          "group_by": [],
+          "measures": [
+            {
+              "source_column": "order_id",
+              "operation": "count",
+              "output": "Orders With Payment"
+            }
+          ],
+          "scope": {
+            "mode": "all"
+          },
+          "filters": [
+            {
+              "column": "has_payments",
+              "operator": "==",
+              "value": 1
+            }
+          ]
+        },
+        {
+          "id": "orders_without_payment",
+          "kind": "aggregation",
+          "group_by": [],
+          "measures": [
+            {
+              "source_column": "order_id",
+              "operation": "count",
+              "output": "Orders Without Payment"
+            }
+          ],
+          "scope": {
+            "mode": "all"
+          },
+          "filters": [
+            {
+              "column": "has_payments",
+              "operator": "==",
+              "value": 0
+            }
+          ]
+        }
+      ],
+      "chart_scope": {
+        "required": false
+      }
+    },
+    "steps": [
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [],
+          "aggregations": {
+            "order_id": "count"
+          },
+          "output_names": {
+            "order_id": "Total Orders"
+          },
+          "filters": []
+        },
+        "status": "failed",
+        "tables": [
+          "olist.db::order_financials"
+        ],
+        "join_keys": [],
+        "error": "Tool 'aggregation' failed: Omit filters or provide non-empty valid predicates."
+      },
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [],
+          "aggregations": {
+            "order_id": "count"
+          },
+          "output_names": {
+            "order_id": "Total Orders"
+          }
+        },
+        "status": "succeeded",
+        "tables": [
+          "olist.db::order_financials"
+        ],
+        "join_keys": []
+      },
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "has_payments"
+          ],
+          "aggregations": {
+            "order_id": "count"
+          },
+          "output_names": {
+            "order_id": "Order Count"
+          },
+          "sort_by": "has_payments",
+          "ascending": true
+        },
+        "status": "succeeded",
+        "tables": [
+          "olist.db::order_financials"
+        ],
+        "join_keys": []
+      }
+    ]
+  }
+]

@@ -7,7 +7,9 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+import asyncio
 from app.analysis.filtering import filter_data
 from app.analysis.monthly_revenue import calculate_monthly_revenue
 from app.analysis_engine import AnalysisEngine
@@ -32,7 +34,7 @@ class DateFilterTest(unittest.TestCase):
   self.assertEqual(result['Quantity'].tolist(),[2])
   self.assertEqual(filter_data(self.df,FILTERS)['Quantity'].tolist(),[2,3])
  def test_invalid_filters_fail_even_on_empty_input(self):
-  invalid=[[],None,{},'not a list',[{}],[{'column':'missing','operator':'==','value':1}],
+  invalid=[None,{},'not a list',[{}],[{'column':'missing','operator':'==','value':1}],
    [{'column':'Quantity','operator':'between','value':[1,4]}],[{'column':'Quantity','operator':'>','value':'two'}],
    [{'column':'Quantity','operator':'in','value':3}],[{'column':'OrderDate','operator':'>','value':'2022-40-01'}],
    [{'column':'OrderDate','operator':'>','value':'Jan 2022'}],
@@ -51,9 +53,13 @@ class DateFilterTest(unittest.TestCase):
   observation=_summarize_results(result)
   self.assertIn('NOT evidence',observation);self.assertIn('NOT exhaustive',observation)
  def test_malformed_outer_tool_parameters_return_error_without_rows(self):
-  for params in [{},{'filters':FILTERS,'year':2022},{'conditions':FILTERS},{'filters':[{'column':'OrderDate','operator':'year','value':2022}]}]:
+  for params in [{'filters':FILTERS,'year':2022},{'conditions':FILTERS},{'filters':[{'column':'OrderDate','operator':'year','value':2022}]}]:
    observation,result=_execute_tool('filtering',params,'test',None,{},dataframe=self.df)
    self.assertIsNone(result);self.assertIn('failed',observation)
+ def test_empty_or_omitted_filters_are_explicit_noops(self):
+  for params in [{},{'filters':[]}]:
+   observation,result=_execute_tool('filtering',params,'test',None,{},dataframe=self.df)
+   self.assertEqual(result['row_count'],len(self.df));self.assertTrue(result['filter_audit']['unchanged'])
  def test_numeric_and_literal_contains_filters_remain_valid(self):
   self.assertEqual(filter_data(self.df,[{'column':'Quantity','operator':'>','value':2}])['Quantity'].tolist(),[3,4])
   self.assertEqual(len(filter_data(pd.DataFrame({'Name':['a.b','axb']}),[{'column':'Name','operator':'contains','value':'.'}])),1)
@@ -78,14 +84,16 @@ class RevenueFixtureTest(unittest.TestCase):
   self.assertEqual(result['data'],[]);self.assertEqual(result['verification']['matched_row_count'],0)
 
 class MonthlyAnswerValidationTest(unittest.TestCase):
- def test_noncanonical_monthly_question_cannot_finish_with_raw_filter_rows(self):
-  from app.llm.agent import Agent
-  question='I need monthly revenue for 2022, please.'
-  actions=[json.dumps({'action':'tool_call','tool':'filtering','parameters':{'filters':FILTERS}}),json.dumps({'action':'final_answer','content':'No records for 2022 exist'})]
-  raw={'columns':['OrderDate','UnitPrice'],'data':[{'OrderDate':'2022-01-01','UnitPrice':10}],'row_count':1}
-  with patch('app.llm.table_selector.TableSelector.select_tables',return_value={'tables_needed':['fixture.csv']}),patch('app.llm.agent.MetadataService.get_profile',return_value={'columns':['OrderDate','UnitPrice']}),patch('app.llm.agent.OllamaClient.call_model_chat',side_effect=actions),patch('app.llm.agent._execute_tool',return_value=('Rows returned',raw)):
-   response=Agent.run(question,'SIMPLE',{},'fixture.csv')
-  self.assertTrue(response['failed']);self.assertNotIn('results',response);self.assertNotIn('No records',response['content'])
+ def test_noncanonical_monthly_question_cannot_finish_without_a_typed_plan(self):
+  from app.models.project import DBProject
+  from app.models.chat import ChatRequest
+  engine=create_engine('sqlite://');Base.metadata.create_all(engine)
+  with Session(engine) as db:
+   db.add(DBProject(id='monthly',name='Monthly'));db.commit()
+   with patch('app.api.v1.chat.QueryPlanner.plan_query',return_value={'intent':'SIMPLE'}),patch('app.api.v1.chat.DatasetManager.get_dataset',return_value=True),patch('app.api.v1.chat.MetadataService.get_profile',return_value={'columns':['OrderDate','UnitPrice']}),patch('app.llm.agent.Agent.run') as agent:
+    response,failed=process_chat_message(ChatRequest(project_id='monthly',dataset_id='fixture.csv',message='Show the monthly revenue for 2022, please.'),db,lambda s:None)
+   self.assertTrue(failed);self.assertNotIn('results',response);agent.assert_not_called()
+  engine.dispose()
  def test_monthly_tool_explanation_cannot_be_overwritten_by_model(self):
   from app.llm.agent import Agent
   fixture=RevenueFixtureTest();fixture.setUp();result=calculate_monthly_revenue(fixture.df,PARAMS)
@@ -119,13 +127,14 @@ class NorthwindMonthlyRevenueTest(unittest.TestCase):
   self.assertGreater(len(filtered),0);self.assertLess(len(filtered),609283)
   self.assertTrue(pd.to_datetime(filtered['OrderDate'],format='mixed').dt.year.eq(2022).all())
  def test_original_question_json_and_saved_result_cannot_be_replaced_by_false_model_claim(self):
-  engine=create_engine('sqlite://');Base.metadata.create_all(engine)
+  engine=create_engine('sqlite://',connect_args={'check_same_thread':False},poolclass=StaticPool);Base.metadata.create_all(engine)
   with Session(engine) as db:
    db.add(DBProject(id='test',name='Test'));db.commit()
    request=ChatRequest(project_id='test',dataset_id=self.tables[0],message='show monthly revenue for year 2022')
-   with patch('app.api.v1.chat.QueryPlanner.plan_query') as planner,patch('app.llm.table_selector.TableSelector.select_tables',return_value={'tables_needed':self.tables,'join_keys':self.keys}),patch('app.llm.agent.DatasetManager.load_joined_dataframe',return_value=self.frame),patch('app.llm.agent.OllamaClient.call_model_chat',return_value=json.dumps({'action':'final_answer','content':'No 2022 records exist'})) as model:
-    response=handle_chat_message(request,db)
-   self.compare(response['results']);planner.assert_not_called();model.assert_not_called()
+   with patch('app.api.v1.chat.QueryPlanner.plan_query',return_value={'intent':'SIMPLE','analysis_plan':{'source':{'tables':self.tables,'join_keys':self.keys},'outputs':[{'id':'revenue','kind':'monthly_revenue','parameters':PARAMS}]}}) as planner,patch('app.llm.table_selector.TableSelector.select_tables',return_value={'tables_needed':self.tables,'join_keys':self.keys}),patch('app.llm.agent.DatasetManager.load_joined_dataframe',return_value=self.frame),patch('app.llm.agent.OllamaClient.call_model_chat',return_value=json.dumps({'action':'final_answer','content':'No 2022 records exist'})) as model:
+    with patch('app.api.v1.chat.SessionLocal',sessionmaker(bind=engine)):
+     response=asyncio.run(handle_chat_message(request))
+   self.compare(response['results']);planner.assert_called_once();model.assert_not_called()
    self.assertNotIn('No 2022',response['content']);self.assertIn('12 calendar months',response['content'])
    saved=list_saved_analyses('test',db);self.assertEqual(len(saved),1);self.compare(saved[0]['result'])
    self.assertEqual(saved[0]['tables'],self.tables)

@@ -1,0 +1,195 @@
+{
+  "origin": "NEW 2026-11-09 diagnostic observation; not the missing 2026-11-08 baseline planner response",
+  "question": "Among orders marked delivered, what fraction reached the customer later than the estimated delivery date? Compare calendar days, so a delivery later in the day on the estimated date is on time. Show the delivered population, missing actual dates, missing estimates among orders with actual dates, comparable order count, late count, and late percentage. Do not drop missing dates without reporting them.",
+  "observed_at": "2026-11-09T06:45:52.884296+00:00",
+  "plan": {
+    "intent": "SIMPLE",
+    "context_action": "standalone",
+    "reference_message_id": null,
+    "clarification": null,
+    "unsupported_reason": null,
+    "reasoning": "Standalone delivered-orders analysis on olist.db::orders. Filter order_status='delivered'. Use null predicates to report missing order_delivered_customer_date and missing order_estimated_delivery_date among orders with actual dates instead of dropping rows. Comparable population requires both dates present. Late means order_delivered_customer_date date part is strictly after order_estimated_delivery_date date part, so same-date later-in-day deliveries are on time. Late percentage is late count divided by comparable count times 100.",
+    "analysis_plan": {
+      "source": {
+        "tables": [
+          "olist.db::orders"
+        ],
+        "join_keys": []
+      },
+      "outputs": [
+        {
+          "id": "delivered_population",
+          "kind": "aggregation",
+          "parameters": {
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              }
+            ],
+            "output_names": {
+              "count_distinct_order_id": "Delivered Orders"
+            },
+            "group_by": []
+          }
+        },
+        {
+          "id": "missing_actual_delivery_dates",
+          "kind": "aggregation",
+          "parameters": {
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": "==",
+                "value": null
+              }
+            ],
+            "output_names": {
+              "count_distinct_order_id": "Missing Actual Delivery Dates"
+            },
+            "group_by": []
+          }
+        },
+        {
+          "id": "missing_estimates_with_actual_dates",
+          "kind": "aggregation",
+          "parameters": {
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": "!=",
+                "value": null
+              },
+              {
+                "column": "order_estimated_delivery_date",
+                "operator": "==",
+                "value": null
+              }
+            ],
+            "output_names": {
+              "count_distinct_order_id": "Missing Estimates Among Orders With Actual Dates"
+            },
+            "group_by": []
+          }
+        },
+        {
+          "id": "comparable_orders",
+          "kind": "aggregation",
+          "parameters": {
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": "!=",
+                "value": null
+              },
+              {
+                "column": "order_estimated_delivery_date",
+                "operator": "!=",
+                "value": null
+              }
+            ],
+            "output_names": {
+              "count_distinct_order_id": "Comparable Orders"
+            },
+            "group_by": []
+          }
+        },
+        {
+          "id": "late_orders",
+          "kind": "aggregation",
+          "parameters": {
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": "!=",
+                "value": null
+              },
+              {
+                "column": "order_estimated_delivery_date",
+                "operator": "!=",
+                "value": null
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": ">",
+                "value_column": "order_estimated_delivery_date",
+                "value_type": "date",
+                "date_part": "date"
+              }
+            ],
+            "output_names": {
+              "count_distinct_order_id": "Late Orders"
+            },
+            "group_by": []
+          }
+        },
+        {
+          "id": "late_percentage",
+          "kind": "comparison_summary",
+          "parameters": {
+            "column": "order_delivered_customer_date",
+            "value_column": "order_estimated_delivery_date",
+            "operator": ">",
+            "value_type": "date",
+            "date_part": "date",
+            "matched_label": "Late",
+            "eligibility_filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": "!=",
+                "value": null
+              },
+              {
+                "column": "order_estimated_delivery_date",
+                "operator": "!=",
+                "value": null
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "execution_error": "output_names maps input measure columns to output labels."
+}

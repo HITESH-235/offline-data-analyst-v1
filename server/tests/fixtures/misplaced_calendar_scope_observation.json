@@ -1,0 +1,261 @@
+{
+  "evidence": "workspace/evaluations/publication-contract-resumed-regression-2026-11-09/Q04.json",
+  "sha256": "5e346fccdf5ba541c78c7463df9ab7f008e59f70407b9e8f899a80c9b8f21c44",
+  "question": "Keep that same sales definition and year, but roll the months up into calendar quarters. Please calculate the four quarterly amounts and use a line chart.",
+  "diagnostics": [
+    {
+      "attempt": 1,
+      "accepted": false,
+      "error": "$.analysis_plan.outputs[0].chart_scope: Extra inputs are not permitted",
+      "output": {
+        "intent": "SIMPLE",
+        "context_action": "inherit",
+        "reference_message_id": "cc8c0921-27b4-4555-9d37-2f3362e06cfd",
+        "changed_fields": [
+          "grain"
+        ],
+        "analysis_plan": {
+          "source": {
+            "tables": [
+              "northwind.db::Orders",
+              "northwind.db::Order Details"
+            ],
+            "join_keys": [
+              {
+                "from_table": "northwind.db::Order Details",
+                "from_column": "OrderID",
+                "to_table": "northwind.db::Orders",
+                "to_column": "OrderID"
+              }
+            ]
+          },
+          "outputs": [
+            {
+              "id": "quarterly_net_sales_2021",
+              "kind": "calendar_aggregate",
+              "parameters": {
+                "source": {
+                  "tables": [
+                    "northwind.db::Orders",
+                    "northwind.db::Order Details"
+                  ],
+                  "join_keys": [
+                    {
+                      "from_table": "northwind.db::Order Details",
+                      "from_column": "OrderID",
+                      "to_table": "northwind.db::Orders",
+                      "to_column": "OrderID"
+                    }
+                  ]
+                },
+                "date_column": "OrderDate",
+                "years": [
+                  2021
+                ],
+                "grain": "quarter",
+                "metric": {
+                  "name": "Net Sales",
+                  "aggregation": "sum",
+                  "expression": {
+                    "op": "multiply",
+                    "args": [
+                      {
+                        "column": "UnitPrice"
+                      },
+                      {
+                        "column": "Quantity"
+                      },
+                      {
+                        "op": "subtract",
+                        "args": [
+                          {
+                            "value": 1
+                          },
+                          {
+                            "column": "Discount"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "compare": false,
+                  "filters": [],
+                  "output": {
+                    "table": true,
+                    "chart": "line"
+                  }
+                }
+              },
+              "chart_scope": {
+                "required": false,
+                "top_n": 10
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "attempt": 2,
+      "accepted": false,
+      "error": "$.analysis_plan.outputs[0].parameters.metric.compare: schema repair changed a requested calculation field; clarify instead",
+      "output": {
+        "intent": "SIMPLE",
+        "context_action": "inherit",
+        "reference_message_id": "cc8c0921-27b4-4555-9d37-2f3362e06cfd",
+        "changed_fields": [
+          "grain"
+        ],
+        "analysis_plan": {
+          "source": {
+            "tables": [
+              "northwind.db::Orders",
+              "northwind.db::Order Details"
+            ],
+            "join_keys": [
+              {
+                "from_table": "northwind.db::Order Details",
+                "from_column": "OrderID",
+                "to_table": "northwind.db::Orders",
+                "to_column": "OrderID"
+              }
+            ]
+          },
+          "outputs": [
+            {
+              "id": "quarterly_net_sales_2021",
+              "kind": "calendar_aggregate",
+              "parameters": {
+                "source": {
+                  "tables": [
+                    "northwind.db::Orders",
+                    "northwind.db::Order Details"
+                  ],
+                  "join_keys": [
+                    {
+                      "from_table": "northwind.db::Order Details",
+                      "from_column": "OrderID",
+                      "to_table": "northwind.db::Orders",
+                      "to_column": "OrderID"
+                    }
+                  ]
+                },
+                "date_column": "OrderDate",
+                "years": [
+                  2021
+                ],
+                "grain": "quarter",
+                "metric": {
+                  "name": "Net Sales",
+                  "aggregation": "sum",
+                  "expression": {
+                    "op": "multiply",
+                    "args": [
+                      {
+                        "column": "UnitPrice"
+                      },
+                      {
+                        "column": "Quantity"
+                      },
+                      {
+                        "op": "subtract",
+                        "args": [
+                          {
+                            "value": 1
+                          },
+                          {
+                            "column": "Discount"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "compare": false,
+                "filters": [],
+                "output": {
+                  "table": true,
+                  "chart": "line"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "seed": {
+    "question": "For calendar 2021, total net sales separately for each month using OrderDate. Join Orders with Order Details on OrderID and calculate UnitPrice times Quantity times (one minus Discount). Call the measure Net Sales, keep the original currency units, and draw a chronological line.",
+    "message_id": "cc8c0921-27b4-4555-9d37-2f3362e06cfd",
+    "plan": {
+      "intent": "SIMPLE",
+      "context_action": "standalone",
+      "reference_message_id": null,
+      "clarification": null,
+      "unsupported_reason": null,
+      "reasoning": null,
+      "analysis_plan": {
+        "source": {
+          "tables": [
+            "northwind.db::Orders",
+            "northwind.db::Order Details"
+          ],
+          "join_keys": [
+            {
+              "from_table": "northwind.db::Order Details",
+              "from_column": "OrderID",
+              "to_table": "northwind.db::Orders",
+              "to_column": "OrderID"
+            }
+          ]
+        },
+        "outputs": [
+          {
+            "id": "monthly_net_sales_2021",
+            "kind": "calendar_aggregate",
+            "parameters": {
+              "date_column": "OrderDate",
+              "years": [
+                2021
+              ],
+              "grain": "month",
+              "metric": {
+                "name": "Net Sales",
+                "aggregation": "sum",
+                "expression": {
+                  "op": "multiply",
+                  "args": [
+                    {
+                      "column": "UnitPrice"
+                    },
+                    {
+                      "column": "Quantity"
+                    },
+                    {
+                      "op": "subtract",
+                      "args": [
+                        {
+                          "value": 1
+                        },
+                        {
+                          "column": "Discount"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              "compare": false,
+              "filters": [],
+              "output": {
+                "table": true,
+                "chart": "line"
+              }
+            },
+            "source": null
+          }
+        ]
+      }
+    }
+  }
+}

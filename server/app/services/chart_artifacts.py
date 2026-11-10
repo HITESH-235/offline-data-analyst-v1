@@ -1,4 +1,6 @@
 """Persisted chart artifacts. Figure JSON is data; HTML is download-only."""
+from contextlib import nullcontext
+from app.services.request_control import checkpoint, current_request
 import json
 import shutil
 import uuid
@@ -7,6 +9,7 @@ from app.utils.workspace import get_project_dir
 
 
 def persist_captures(output_dir, project_id):
+    checkpoint()
     root = Path(output_dir)
     manifest = root / 'captures.json'
     if not manifest.exists():
@@ -18,6 +21,7 @@ def persist_captures(output_dir, project_id):
     destination.mkdir(parents=True, exist_ok=True)
     artifacts = []
     for capture in captures:
+        checkpoint()
         ident = uuid.uuid4().hex
         artifact = {key: capture[key] for key in ('kind', 'title', 'status', 'reason', 'width', 'height', 'observations', 'population') if key in capture}
         artifact.update({'id': ident, 'version': 1})
@@ -33,8 +37,10 @@ def persist_captures(output_dir, project_id):
             if suffix not in ('.json', '.html', '.png'):
                 continue
             target = destination / f'{ident}-{role}{suffix}'
+            checkpoint()
             shutil.copy2(source, target)
             files[role] = target.name
+            checkpoint()
         if not files:
             continue
         if 'download' not in files and 'figure' in files:
@@ -51,7 +57,9 @@ def persist_captures(output_dir, project_id):
             artifact['mime_type'] = 'image/png'
         else:
             artifact['mime_type'] = 'application/vnd.plotly.v1+json' if artifact['kind'] == 'plotly' else 'text/html'
-        (destination / f'{ident}.artifact.json').write_text(json.dumps({**artifact, 'files': files}))
+        control = current_request.get()
+        with control.publication() if control else nullcontext():
+            (destination / f'{ident}.artifact.json').write_text(json.dumps({**artifact, 'files': files}))
         artifacts.append(artifact)
     return artifacts
 

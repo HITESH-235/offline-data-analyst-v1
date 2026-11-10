@@ -7,6 +7,8 @@ import json
 import logging
 from typing import Dict, Any, Tuple, Optional
 from app.core.config import settings
+from app.services.request_control import current_request, checkpoint, RequestStopped
+from contextlib import nullcontext
 from app.core.constants import SANDBOX_TIMEOUT_SECONDS, SANDBOX_MAX_MEMORY_MB
 from app.sandbox.validator import validate_code_safety
 
@@ -110,16 +112,25 @@ class SandboxRunner:
             
             # Start isolated process execution
             # preexec_fn sets resource limits in the subprocess (Linux only)
-            result = subprocess.run(
+            checkpoint()
+            control = current_request.get()
+            with subprocess.Popen(
                 cmd,
                 cwd=temp_dir,
-                env={**os.environ, "PYTHONPATH":os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))},
-                capture_output=True,
-                text=True,
-                timeout=SANDBOX_TIMEOUT_SECONDS,
+                env={**os.environ, "PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))},
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                 preexec_fn=set_subprocess_resource_limits if os.name != "nt" else None
-            )
-            
+            ) as process:
+                try:
+                    with control.resource(process.kill) if control else nullcontext():
+                        stdout_text, stderr_text = process.communicate(timeout=min(SANDBOX_TIMEOUT_SECONDS, control.remaining()) if control else SANDBOX_TIMEOUT_SECONDS)
+                except BaseException:
+                    process.kill()
+                    process.communicate()
+                    raise
+                result = subprocess.CompletedProcess(cmd, process.returncode, stdout_text, stderr_text)
+            checkpoint()
+
             # 4. Read output results
             stdout = ""
             error = ""
@@ -186,7 +197,9 @@ class SandboxRunner:
                     error = str(validation_error)
                 else:
                     with open(capture_path,'w') as file: json.dump(captures,file)
+            checkpoint()
             artifacts = persist_captures(temp_dir, project_id) if not error and result.returncode == 0 else []
+            checkpoint()
 
             success = len(error) == 0 and result.returncode == 0
             
@@ -201,6 +214,9 @@ class SandboxRunner:
                 "verified_tables":verified_tables
             }
 
+        except RequestStopped:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            raise
         except subprocess.TimeoutExpired:
             logger.warning(f"Execution timeout triggered after {SANDBOX_TIMEOUT_SECONDS}s.")
             return {

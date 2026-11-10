@@ -2,38 +2,6 @@
 # STEP 1: PLANNER — classifies user query into an intent
 # ============================================================
 
-PLANNER_SYSTEM_PROMPT = """You are the Router and Planner component of an Offline AI Data Analyst system.
-Your job is to analyze the user's question, inspect the dataset metadata, and classify the query into exactly one of three categories:
-
-1. "SIMPLE": The request can be fully satisfied using direct database filters, groupings, aggregations, descriptive statistics, correlation matrices or a validated comparison_summary (column-to-column comparison counts and percentage).
-2. "COMPLEX": The request is too complex for basic filters/aggregations and requires custom calculations, Python logic, pivot transformations, or plotting (e.g. data transformations, statistical models, distributions).
-3. "CONVERSATION": The request is a normal question or chat message that does not ask for analytical calculations on the dataset (e.g. greeting, general explanation, dataset schema explanation).
-
-For a date-comparison percentage, return operation.type="comparison_summary" and parameters with column (actual), value_column (comparison), operator, value_type:"date", date_part:"date" for calendar dates, and the exact field eligibility_filters (a predicate list). Use matched_label:"Late" for late delivery. For delivered/late analysis filter status="delivered"; the calculation itself counts missing actual and comparison dates. Never put a column name in a literal date value. This operation returns numerator, denominator and percentage in one calculation. If the operation cannot express the request, classify COMPLEX rather than retry incompatible literal filters.
-
-A declared SQLite foreign-key join can be prepared by the backend before a SIMPLE operation.
-For example, "Join Products and Order Details on ProductID, sum Quantity by ProductName, and sort from highest to lowest" is SIMPLE. The join does not require generated Python.
-
-You must respond in strict JSON format. Do not add any conversational text or explanation outside the JSON.
-
-Expected JSON output format:
-{
-  "intent": "SIMPLE" | "COMPLEX" | "CONVERSATION",
-  "reasoning": "A brief explanation of why this category was chosen.",
-  "operation": {
-    "type": "aggregation" | "filtering" | "statistics" | "correlation" | "visualization" | "comparison_summary" | null,
-    "parameters": {
-       "group_by": ["position"],
-       "aggregations": {"market_value_eur": "mean", "age": "mean"},
-       "sort_by": "market_value_eur",
-       "ascending": false
-    }
-  }
-}
-
-Note for aggregation: Always map user target measure columns into the "aggregations" dict (e.g., {"column_name": "mean"|"sum"|"count"}). Do not leave aggregations empty unless only row counts per group are requested.
-"""
-
 PLANNER_USER_TEMPLATE = """Dataset Columns and Descriptions:
 {schema_description}
 
@@ -261,20 +229,15 @@ Raw Calculated Data Results:
 
 
 from app.analysis.comparison_summary import contract_instructions as _comparison_contract
-PLANNER_SYSTEM_PROMPT += "\n" + _comparison_contract()
 SIMPLE_TOOLS_PROMPT += "\n" + _comparison_contract()
 
-ANALYSIS_CONTRACT_INSTRUCTIONS = '''
-For analytical requests, return completion_contract alongside intent/context fields.
-It describes the requested calculation, independently of chart presentation:
-{"outputs":[{"id":"status_counts","kind":"aggregation","group_by":["status"],"measures":[{"source_column":"record_id","operation":"count","output":"Record Count"}],"scope":{"mode":"all"}}],"chart_scope":{"required":true,"top_n":10}}
-Use actual fields from the catalog. Output kinds match calculation types: aggregation, filtering, correlation, comparison_summary, calendar_aggregate, monthly_revenue, or statistics. Each distinct requested table/metric set needs an output specification and stable id. For aggregation always provide group_by (empty for grand totals), measures, scope, and filters (empty when no predicates are requested). Optional columns/source_tables further constrain the output. Measures can specify source_column, operation, output, unit, divide_by, and derived. A requested derived metric must be explicitly listed, not merely derivable from other columns.
-Result scope is {"mode":"all"} when all groups are requested, regardless of the noun (states, teams, regions, products, etc.). A Top N CHART does not limit the result. An actual top-N result uses {"mode":"top","limit":N}. chart_scope is separate and supports required and top_n (5/10/20).
-For cents converted to BRL, require the actual output unit BRL and divide_by:100. For missing counts, require a derived measure computed from the aggregate counts. For multiple related outputs list all of them; success requires every requested output. Do not classify execution or image generation alone as successful completion. If you cannot identify the requested metric/population, ask for clarification.
-'''
-PLANNER_SYSTEM_PROMPT += '\n'+ANALYSIS_CONTRACT_INSTRUCTIONS
 SIMPLE_TOOLS_PROMPT += '''\nEach tool call may set output_id to a requested completion-contract output ID. Multiple calculations may produce multiple related outputs. A successful replacement of that output must still satisfy its requirements. visualization attaches a specification to a calculated result, never raw data. Reuse final output field names and do not call visualization to recompute data. Aggregation supports derived_measures:[{"name":"Missing Count","expression":{"op":"subtract","args":[{"column":"Total Count"},{"column":"Present Count"}]},"unit":"records"}]. Columns in derived expressions reference final aggregate aliases. All requested measures must be computed. Final prose is a draft: factual numbers come only from the published package.\n'''
 COMPLEX_TOOLS_PROMPT += '''\nFor verified structured Python outputs, set analysis_tables={"output_id": dataframe} and analysis_plans={"output_id":{"tool":"aggregation","parameters":{...}}}. Use the same canonical analysis operations/parameters as built-in tools. The backend recomputes each declared plan on the resolved input and checks your returned values. Multiple tables are supported. Charts/printed text without validated calculation outputs remain incomplete; do not claim they prove success.\n'''
 
 COMPLEX_TOOLS_PROMPT += '\nCanonical Python export plans support aggregation, comparison_summary, correlation, and monthly_revenue. Aggregation parameters: group_by, aggregations (column: operation), output_names, transforms (column/divide_by/as/unit), fill_missing, filters, sort_by, ascending, limit, derived_measures. Correlation parameters: columns and method. Other requested Python operations without a supported verifiable export plan must be reported incomplete.\n'+_comparison_contract()
 COMPLEX_TOOLS_PROMPT += '\nExample verified export: summary=df.groupby("region",dropna=False)["revenue"].sum().reset_index(); analysis_tables={"sales":summary}; analysis_plans={"sales":{"tool":"aggregation","parameters":{"group_by":["region"],"aggregations":{"revenue":"sum"}}}}. Use actual requested columns and output IDs. Each plan is recomputed against the ORIGINAL resolved df, so include all filters and transformations in that plan.\n'
+
+# The fallback agent receives the same authoritative parameter schemas as planning.
+from app.analysis.operations import REGISTRY as _operation_registry
+import json as _schema_json
+SIMPLE_TOOLS_PROMPT += "\nAUTHORITATIVE OPERATION PARAMETER SCHEMAS (supersede abbreviated examples above):\n"+_schema_json.dumps({k:v.model_json_schema() for k,v in _operation_registry.items()})+"\ncount_distinct counts distinct non-null values. Never substitute count. Empty filters mean no predicates; retain all nonempty filters."

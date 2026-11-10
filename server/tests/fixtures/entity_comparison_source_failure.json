@@ -1,0 +1,327 @@
+{
+  "id": "242c7480-5570-4ea8-a30b-3d34eff180c8",
+  "content": "**Analysis failed**\n\n**Why it stopped**\n\n- No validated completion contract for the requested calculation.\n- Requested measures/grouping/population/formula/source/sorting were not verified together: requested\\_entity\\_comparison\n- Execution stopped before the requested analysis completed.\n- No structured calculation output was returned. Python execution or chart capture alone does not prove completion.\n\nAnalysis stopped: entity_comparison requires exactly its two declared source tables; extra joins are unsupported",
+  "metadata": {
+    "question": "For delivered orders purchased during 2018, compare average review scores for late versus on-time deliveries. Compare actual and estimated calendar dates, treating same-day delivery as on time. Average reviews within each order_id first, then weight every order equally. Report exclusions for missing dates or reviews.",
+    "user_message_id": "223b0419-4638-46e4-aace-a18c33d6fc79",
+    "request_id": "c25ed059-867c-4e28-aa68-23707e7cae1d",
+    "request_stage": "failed",
+    "elapsed_ms": 20392,
+    "request_requirements": {
+      "outputs": [
+        {
+          "id": "requested_entity_comparison",
+          "kind": "entity_comparison"
+        }
+      ],
+      "entity_constraints": {
+        "entity_key": "order_id",
+        "calendar_dates": true,
+        "measurement_expression": {
+          "column": "review_score"
+        },
+        "years": [
+          2018
+        ],
+        "period_column": "order_purchase_timestamp",
+        "required_filters": [
+          {
+            "column": "order_status",
+            "operator": "==",
+            "value": "delivered"
+          }
+        ],
+        "exact_population": true
+      }
+    },
+    "planner_diagnostics": [
+      {
+        "attempt": 1,
+        "accepted": true,
+        "output": {
+          "intent": "SIMPLE",
+          "context_action": "standalone",
+          "analysis_plan": {
+            "source": {
+              "tables": [
+                "olist.db::orders"
+              ],
+              "join_keys": [],
+              "database": null
+            },
+            "outputs": [
+              {
+                "id": "requested_entity_comparison",
+                "kind": "entity_comparison",
+                "parameters": {
+                  "population_table": "olist.db::orders",
+                  "observations_table": "olist.db::order_reviews",
+                  "entity_key": "order_id",
+                  "observation_key": "order_id",
+                  "filters": [
+                    {
+                      "column": "order_status",
+                      "operator": "==",
+                      "value": "delivered"
+                    },
+                    {
+                      "column": "order_purchase_timestamp",
+                      "operator": ">=",
+                      "value": "2018-01-01",
+                      "value_type": "date",
+                      "date_part": "date"
+                    },
+                    {
+                      "column": "order_purchase_timestamp",
+                      "operator": "<=",
+                      "value": "2018-12-31",
+                      "value_type": "date",
+                      "date_part": "date"
+                    }
+                  ],
+                  "measurement": {
+                    "name": "average_review_score",
+                    "expression": {
+                      "column": "review_score"
+                    },
+                    "aggregation": "mean"
+                  },
+                  "comparison": {
+                    "column": "order_delivered_customer_date",
+                    "value_column": "order_estimated_delivery_date",
+                    "operator": ">",
+                    "value_type": "date",
+                    "date_part": "date"
+                  },
+                  "matched_label": "Late",
+                  "unmatched_label": "On time",
+                  "entity_label": "Orders",
+                  "group_aggregation": "mean",
+                  "weighting": "equal_entity"
+                },
+                "source": null
+              }
+            ],
+            "chart_scope": {}
+          }
+        }
+      }
+    ],
+    "requested_analysis": {
+      "source": {
+        "tables": [
+          "olist.db::orders"
+        ],
+        "join_keys": []
+      },
+      "outputs": [
+        {
+          "id": "requested_entity_comparison",
+          "kind": "entity_comparison",
+          "parameters": {
+            "population_table": "olist.db::orders",
+            "observations_table": "olist.db::order_reviews",
+            "entity_key": "order_id",
+            "observation_key": "order_id",
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_purchase_timestamp",
+                "operator": ">=",
+                "value": "2018-01-01",
+                "value_type": "date",
+                "date_part": "date"
+              },
+              {
+                "column": "order_purchase_timestamp",
+                "operator": "<=",
+                "value": "2018-12-31",
+                "value_type": "date",
+                "date_part": "date"
+              }
+            ],
+            "measurement": {
+              "name": "average_review_score",
+              "expression": {
+                "column": "review_score"
+              },
+              "aggregation": "mean"
+            },
+            "comparison": {
+              "column": "order_delivered_customer_date",
+              "value_column": "order_estimated_delivery_date",
+              "operator": ">",
+              "value_type": "date",
+              "date_part": "date"
+            },
+            "matched_label": "Late",
+            "unmatched_label": "On time",
+            "entity_label": "Orders",
+            "group_aggregation": "mean",
+            "weighting": "equal_entity"
+          },
+          "source": null
+        }
+      ],
+      "chart_scope": {}
+    },
+    "analysis_failed": true,
+    "unresolved_intent": {
+      "question": "For delivered orders purchased during 2018, compare average review scores for late versus on-time deliveries. Compare actual and estimated calendar dates, treating same-day delivery as on time. Average reviews within each order_id first, then weight every order equally. Report exclusions for missing dates or reviews.",
+      "requirements": {
+        "outputs": [
+          {
+            "id": "requested_entity_comparison",
+            "kind": "entity_comparison"
+          }
+        ],
+        "entity_constraints": {
+          "entity_key": "order_id",
+          "calendar_dates": true,
+          "measurement_expression": {
+            "column": "review_score"
+          },
+          "years": [
+            2018
+          ],
+          "period_column": "order_purchase_timestamp",
+          "required_filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered"
+            }
+          ],
+          "exact_population": true
+        }
+      },
+      "plan": {
+        "source": {
+          "tables": [
+            "olist.db::orders"
+          ],
+          "join_keys": []
+        },
+        "outputs": [
+          {
+            "id": "requested_entity_comparison",
+            "kind": "entity_comparison",
+            "parameters": {
+              "population_table": "olist.db::orders",
+              "observations_table": "olist.db::order_reviews",
+              "entity_key": "order_id",
+              "observation_key": "order_id",
+              "filters": [
+                {
+                  "column": "order_status",
+                  "operator": "==",
+                  "value": "delivered"
+                },
+                {
+                  "column": "order_purchase_timestamp",
+                  "operator": ">=",
+                  "value": "2018-01-01",
+                  "value_type": "date",
+                  "date_part": "date"
+                },
+                {
+                  "column": "order_purchase_timestamp",
+                  "operator": "<=",
+                  "value": "2018-12-31",
+                  "value_type": "date",
+                  "date_part": "date"
+                }
+              ],
+              "measurement": {
+                "name": "average_review_score",
+                "expression": {
+                  "column": "review_score"
+                },
+                "aggregation": "mean"
+              },
+              "comparison": {
+                "column": "order_delivered_customer_date",
+                "value_column": "order_estimated_delivery_date",
+                "operator": ">",
+                "value_type": "date",
+                "date_part": "date"
+              },
+              "matched_label": "Late",
+              "unmatched_label": "On time",
+              "entity_label": "Orders",
+              "group_aggregation": "mean",
+              "weighting": "equal_entity"
+            },
+            "source": null
+          }
+        ],
+        "chart_scope": {}
+      },
+      "explicit_years": [
+        2018
+      ]
+    },
+    "analysis_package": {
+      "version": 1,
+      "id": "242c7480-5570-4ea8-a30b-3d34eff180c8",
+      "project_id": "b4d8b8db-3223-4407-9426-f62df51dcb70",
+      "question": "For delivered orders purchased during 2018, compare average review scores for late versus on-time deliveries. Compare actual and estimated calendar dates, treating same-day delivery as on time. Average reviews within each order_id first, then weight every order equally. Report exclusions for missing dates or reviews.",
+      "status": "failed",
+      "requirements": null,
+      "request_requirements": {
+        "outputs": [
+          {
+            "id": "requested_entity_comparison",
+            "kind": "entity_comparison"
+          }
+        ],
+        "entity_constraints": {
+          "entity_key": "order_id",
+          "calendar_dates": true,
+          "measurement_expression": {
+            "column": "review_score"
+          },
+          "years": [
+            2018
+          ],
+          "period_column": "order_purchase_timestamp",
+          "required_filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered"
+            }
+          ],
+          "exact_population": true
+        }
+      },
+      "completion_checks": [
+        {
+          "requirement_id": "requested_entity_comparison",
+          "status": "missing",
+          "table_ids": [],
+          "reason": "Requested measures/grouping/population/formula/source/sorting were not verified together: requested_entity_comparison"
+        }
+      ],
+      "incomplete_reasons": [
+        "No validated completion contract for the requested calculation.",
+        "Requested measures/grouping/population/formula/source/sorting were not verified together: requested_entity_comparison",
+        "Execution stopped before the requested analysis completed.",
+        "No structured calculation output was returned. Python execution or chart capture alone does not prove completion."
+      ],
+      "tables": [],
+      "charts": [],
+      "facts": [],
+      "interpretation": [],
+      "provenance": {
+        "steps": []
+      },
+      "chart_scope": {}
+    },
+    "analysis_status": "failed"
+  }
+}

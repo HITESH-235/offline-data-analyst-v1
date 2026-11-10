@@ -2,10 +2,47 @@ import json
 import urllib.request
 import urllib.error
 import logging
+import http.client
+import socket
+from contextlib import contextmanager, ExitStack
+from app.services.request_control import current_request
 from typing import Dict, Any, Optional, List
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+@contextmanager
+def provider_response(request, timeout):
+    control = current_request.get()
+    if control is None:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            yield response
+        return
+    with control.model_call(), ExitStack() as resources:
+        def connection_type(base):
+            class Connection(base):
+                def connect(self):
+                    super().connect()
+                    sock = self.sock
+                    def close():
+                        try: sock.shutdown(socket.SHUT_RDWR)
+                        except OSError: pass
+                        sock.close()
+                    resources.enter_context(control.resource(close))
+            return Connection
+        class HTTPHandler(urllib.request.HTTPHandler):
+            def http_open(self, req):
+                return self.do_open(connection_type(http.client.HTTPConnection), req)
+        class HTTPSHandler(urllib.request.HTTPSHandler):
+            def https_open(self, req):
+                return self.do_open(connection_type(http.client.HTTPSConnection), req,
+                                    context=self._context)
+        opener = urllib.request.build_opener(HTTPHandler(), HTTPSHandler())
+        # The socket timeout is also bounded; the supervisor handles dribbling bodies.
+        with opener.open(request, timeout=min(timeout, control.remaining())) as response:
+            yield response
+        control.check()
+
 
 class OllamaClient:
     @staticmethod
@@ -38,7 +75,7 @@ class OllamaClient:
         )
         
         try:
-            with urllib.request.urlopen(req, timeout=600) as response:
+            with provider_response(req, timeout=600) as response:
                 resp_data = json.loads(response.read().decode("utf-8"))
                 return resp_data.get("response", "")
         except urllib.error.URLError as e:
@@ -80,7 +117,7 @@ class OllamaClient:
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=600) as response:
+            with provider_response(req, timeout=600) as response:
                 resp_data = json.loads(response.read().decode("utf-8"))
                 # /api/chat returns {"message": {"role": "assistant", "content": "..."}}
                 return resp_data.get("message", {}).get("content", "")

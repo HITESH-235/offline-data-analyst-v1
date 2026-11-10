@@ -80,10 +80,10 @@ class CorrelationResultTest(unittest.TestCase):
             db.add(DBProject(id='test',name='Test'));db.commit()
             with patch('app.api.v1.chat.DatasetManager.get_dataset',return_value=True), \
                  patch('app.api.v1.chat.MetadataService.get_profile',return_value={'columns':list(self.frame.columns)}), \
-                 patch('app.llm.planner.QueryPlanner.plan_query',return_value={'intent':'SIMPLE'}), \
+                 patch('app.llm.planner.QueryPlanner.plan_query',return_value={'intent':'SIMPLE','analysis_plan':{'source':{'tables':['fixture::Details']},'outputs':[{'id':'correlation','kind':'correlation','parameters':{'method':'pearson','columns':COLUMNS}}]}}), \
                  patch('app.llm.table_selector.TableSelector.select_tables',return_value={'tables_needed':['fixture::Details']}), \
                  patch('app.llm.agent.OllamaClient.call_model_chat',side_effect=replies), \
-                 patch('app.analysis_engine.DatasetManager.load_dataset_dataframe',return_value=self.frame):
+                 patch('app.analysis_engine.DatasetManager.load_dataset_dataframe',return_value=self.frame), patch('app.services.metadata_service.MetadataService.get_catalog_index',return_value={'tables':{'fixture::Details':{'columns':list(self.frame.columns)}},'relationships':[]}):
                 response,failed=process_chat_message(ChatRequest(project_id='test',dataset_id='fixture::Details',message=QUESTION),db,lambda stage:None)
             self.assertFalse(failed,response)
             self.assertNotIn('Heatmaps unavailable',response['content'])

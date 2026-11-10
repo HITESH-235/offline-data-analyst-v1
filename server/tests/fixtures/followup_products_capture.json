@@ -1,0 +1,109 @@
+{
+  "baseline": {
+    "question": "Standalone question: join Products to Order Details on ProductID. Sum Quantity for each ProductName across the complete dataset. Return only the five products with the most units sold, sorted descending, with a horizontal bar chart. Limit both the table and chart to five products.",
+    "plan": {
+      "intent": "SIMPLE",
+      "context_action": "standalone",
+      "analysis_plan": {
+        "source": {
+          "tables": [
+            "northwind.db::Products",
+            "northwind.db::Order Details"
+          ],
+          "join_keys": [
+            {
+              "from_table": "northwind.db::Order Details",
+              "from_column": "ProductID",
+              "to_table": "northwind.db::Products",
+              "to_column": "ProductID"
+            }
+          ]
+        },
+        "outputs": [
+          {
+            "id": "top_products_by_quantity_sold",
+            "kind": "aggregation",
+            "parameters": {
+              "measures": [
+                {
+                  "id": "total_quantity_sold",
+                  "column": "Quantity",
+                  "operation": "sum",
+                  "label": "Total Quantity Sold"
+                }
+              ],
+              "group_by": [
+                "ProductName"
+              ],
+              "sort_by": "total_quantity_sold",
+              "ascending": false,
+              "limit": 5
+            }
+          }
+        ],
+        "chart_scope": {
+          "preference": "required",
+          "top_n": 5
+        },
+        "presentation": {
+          "table_in_chat": true
+        }
+      }
+    }
+  },
+  "reference": "23233d0f-40e0-4c7e-8d1e-24d5de6f52c5",
+  "question": "Keep the same sources and quantity calculation. Return all products in the table, sorted by units sold descending, but keep the chart limited to the leading five. Do not include the table in chat.",
+  "reply": {
+    "intent": "SIMPLE",
+    "context_action": "inherit",
+    "reference_message_id": "23233d0f-40e0-4c7e-8d1e-24d5de6f52c5",
+    "analysis_plan": {
+      "source": {
+        "tables": [
+          "northwind.db::Products",
+          "northwind.db::Order Details"
+        ],
+        "join_keys": [
+          {
+            "from_table": "northwind.db::Order Details",
+            "from_column": "ProductID",
+            "to_table": "northwind.db::Products",
+            "to_column": "ProductID"
+          }
+        ]
+      },
+      "outputs": [
+        {
+          "id": "top_products_by_quantity_sold",
+          "kind": "aggregation",
+          "parameters": {
+            "measures": [
+              {
+                "id": "total_quantity_sold",
+                "column": "Quantity",
+                "operation": "sum",
+                "label": "Total Quantity Sold"
+              }
+            ],
+            "group_by": [
+              "ProductName"
+            ],
+            "sort_by": "total_quantity_sold",
+            "ascending": false
+          }
+        }
+      ],
+      "chart_scope": {
+        "preference": "required",
+        "top_n": 5
+      },
+      "presentation": {
+        "table_in_chat": false
+      }
+    },
+    "changed_fields": [
+      "outputs.top_products_by_quantity_sold.parameters.limit",
+      "presentation.table_in_chat"
+    ]
+  }
+}

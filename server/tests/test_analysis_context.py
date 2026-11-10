@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from app.api.v1.chat import process_chat_message
 from app.analysis.calendar import calculate
-from app.services.analysis_context import load_context,from_result,grouping_update
+from app.services.analysis_context import load_context,from_result
 from app.services.dataset_manager import DatasetManager
 from app.llm.table_selector import TableSelector
 from app.models.chat import ChatRequest,DBChatHistory
@@ -31,7 +31,11 @@ class FollowupTest(unittest.TestCase):
  def tearDown(self):self.db.close();self.engine.dispose()
  def send(self,message,state,action='standalone'):
   before=load_context(self.db,'p')
-  plan={'intent':'SIMPLE','context_action':action,'resolved_analysis':state}
+  plan={'intent':'SIMPLE','context_action':action,'analysis_plan':{'source':state['source'],'outputs':[{'id':'calendar','kind':'calendar_aggregate','parameters':state}]}}
+  if action=='inherit' and before['recent_successes']:
+   prior=before['recent_successes'][0];plan['reference_message_id']=prior['message_id']
+   old=prior['analysis']['plan']['outputs'][0]['parameters']
+   plan['changed_fields']=[key for key in ('years','compare','grain','filters','metric','date_column') if state.get(key)!=old.get(key)]
   request=ChatRequest(project_id='p',dataset_id=TABLES[0],message=message)
   with patch('app.api.v1.chat.QueryPlanner.plan_query',return_value=plan) as planner,patch('app.llm.agent.OllamaClient.call_model_chat') as model:
    result,failed=process_chat_message(request,self.db,lambda stage:None)
@@ -41,7 +45,7 @@ class FollowupTest(unittest.TestCase):
   first,_=self.send('Show monthly revenue for 2021 after discounts.',copy.deepcopy(STATE))
   quarter=copy.deepcopy(STATE);quarter['grain']='quarter'
   second,history=self.send('Now show that quarterly.',quarter,'inherit')
-  self.assertEqual(history['recent_successes'][0]['analysis']['years'],[2021])
+  self.assertEqual(history['recent_successes'][0]['analysis']['plan']['outputs'][0]['parameters']['years'],[2021])
   self.assertNotIn('data',history['recent_successes'][0]['analysis'])
   self.assertEqual(second['results']['row_count'],4)
   for row,(_,q,value) in zip(second['results']['data'],self.sql[:4]):
@@ -51,7 +55,7 @@ class FollowupTest(unittest.TestCase):
   self.db.close();self.db=Session(self.engine)
   comparison=copy.deepcopy(quarter);comparison.update(years=[2021,2022],compare=True)
   third,history=self.send('Compare those quarters with 2022.',comparison,'inherit')
-  self.assertEqual(history['recent_successes'][0]['analysis']['grain'],'quarter')
+  self.assertEqual(history['recent_successes'][0]['analysis']['plan']['outputs'][0]['parameters']['grain'],'quarter')
   self.assertEqual(third['results']['row_count'],4)
   for year in (2021,2022):
    for row,(_,q,value) in zip(third['results']['data'],[r for r in self.sql if r[0]==year]):
@@ -74,11 +78,9 @@ class FollowupTest(unittest.TestCase):
      self.db.close();self.db=Session(self.engine)
     restored=load_context(self.db,'p')['recent_successes'][0]
     self.assertEqual(restored['message_id'],third['id'])
-    self.assertEqual(restored['analysis']['years'],[2021,2022])
-    stale={'intent':'SIMPLE','context_action':'inherit','reference_message_id':first['id'],'resolved_analysis':STATE}
-    with patch('app.api.v1.chat.QueryPlanner.plan_query',return_value=stale) as planner:
-     response,failed=process_chat_message(ChatRequest(project_id='p',dataset_id=TABLES[0],message='Show that monthly instead.'),self.db,lambda stage:None)
-    self.assertFalse(failed,response);planner.assert_not_called()
+    self.assertEqual(restored['analysis']['plan']['outputs'][0]['parameters']['years'],[2021,2022])
+    monthly=copy.deepcopy(comparison);monthly['grain']='month'
+    response,_=self.send('Show that monthly instead.',monthly,'inherit')
     result=response['results'];state=response['analysis_context']
     self.assertEqual(result['row_count'],12)
     self.assertEqual(result['columns'],['Month','Revenue 2021','Revenue 2022'])
@@ -92,29 +94,24 @@ class FollowupTest(unittest.TestCase):
      self.assertAlmostEqual(sum(row[f'Revenue {year}'] for row in result['data']),self.annual[year],places=5)
      self.assertIn(f'{self.annual[year]:,.2f}',response['content'])
     saved=json.loads(self.db.get(DBChatHistory,response['id']).metadata_json)
-    self.assertEqual(saved['analysis_context'],state)
+    self.assertEqual(saved['analysis_context'],{'version':1,'plan':response['analysis_plan']})
     self.assertEqual(saved['results']['analysis_context'],state)
     self.assertEqual(saved['context_resolution']['reference_message_id'],third['id'])
     self.assertEqual(saved['context_resolution']['updated_fields'],['grain'])
-    self.assertEqual(load_context(self.db,'p')['recent_successes'][0]['analysis'],state)
+    self.assertEqual(load_context(self.db,'p')['recent_successes'][0]['analysis'],saved['analysis_context'])
  def test_result_context_is_authoritative_and_grouping_edits_are_narrow(self):
   comparison=copy.deepcopy(STATE);comparison.update(years=[2021,2022],compare=True,grain='quarter')
   meta={'question':'Comparison','analysis_context':STATE,'results':{'analysis_context':comparison},'calculation':{'steps':[{'status':'succeeded','tool':'calendar_aggregate','tables':TABLES,'join_keys':KEYS}]}}
   self.db.add(DBChatHistory(id='authoritative',project_id='p',role='assistant',content='Done',metadata_json=json.dumps(meta)));self.db.commit()
   history=load_context(self.db,'p')
-  self.assertEqual(history['recent_successes'][0]['analysis'],comparison)
-  self.assertEqual(from_result(meta),comparison)
-  patch_plan=grouping_update('Display those by month instead',history)
-  self.assertEqual(patch_plan['resolved_analysis'],{'grain':'month'})
-  self.assertIsNone(grouping_update('Show monthly Freight for 2022',history))
-  self.assertIsNone(grouping_update('Show that monthly for 2021 only',history))
-  self.assertIsNone(grouping_update('Compare that monthly with 2023',history))
+  self.assertEqual(history['recent_successes'][0]['analysis']['plan']['outputs'][0]['parameters'],{k:v for k,v in comparison.items() if k!='source'})
+  self.assertIsNone(from_result(meta))  # New writers require an executed canonical plan.
  def test_many_failed_turns_cannot_push_success_out_of_bounded_history(self):
   self.send('Revenue by month.',copy.deepcopy(STATE))
   for i in range(25):
    self.db.add(DBChatHistory(id=f'failure-{i}',project_id='p',role='assistant',content='Failed',metadata_json=json.dumps({'analysis_failed':True})))
   self.db.commit()
-  self.assertEqual(load_context(self.db,'p')['recent_successes'][0]['analysis']['years'],[2021])
+  self.assertEqual(load_context(self.db,'p')['recent_successes'][0]['analysis']['plan']['outputs'][0]['parameters']['years'],[2021])
  def test_standalone_source_and_metric_changes_do_not_inherit_years(self):
   self.send('Revenue by month.',copy.deepcopy(STATE))
   state=copy.deepcopy(STATE);state.update(years=[2022],grain='quarter')
@@ -127,7 +124,7 @@ class FollowupTest(unittest.TestCase):
   with patch('app.api.v1.chat.QueryPlanner.plan_query',return_value={'intent':'SIMPLE','context_action':'clarify','clarification':'Which metric should I compare?'}),patch('app.api.v1.chat.Agent.run') as agent:
    result,failed=process_chat_message(ChatRequest(project_id='p',dataset_id=TABLES[0],message='Compare that with the other one.'),self.db,lambda stage:None)
   agent.assert_not_called();self.assertTrue(result['clarification_required'])
-  self.assertEqual(load_context(self.db,'p')['recent_successes'][0]['analysis']['years'],[2021])
+  self.assertEqual(load_context(self.db,'p')['recent_successes'][0]['analysis']['plan']['outputs'][0]['parameters']['years'],[2021])
  def test_legacy_python_context_is_bounded_and_skips_advice(self):
   code="df['net'] = df['UnitPrice'] * df['Quantity'] * (1-df['Discount'])\nmask=df['Date'].dt.year==2021"
   meta={'question':'Net sales in 2021','calculation':{'steps':[{'tool':'run_code','status':'succeeded','tables':TABLES,'join_keys':KEYS,'parameters':{'code':code}}]},'results':{'data':[{'huge_raw_dataset':'never send this'}]}}
@@ -135,9 +132,7 @@ class FollowupTest(unittest.TestCase):
   context=load_context(self.db,'p');serialized=json.dumps(context)
   self.assertNotIn('huge_raw_dataset',serialized);self.assertNotIn('parameters": {"code"',serialized)
   self.assertEqual(context['recent_successes'][0]['code_facts']['years'],[2021])
-  persisted=from_result(meta)
-  self.assertEqual(persisted['code_facts']['years'],[2021])
-  self.assertNotIn('code',persisted['parameters'])
+  self.assertIsNone(from_result(meta))
  def test_table_identifiers_validated_and_cross_database_guard_retained(self):
   catalog={t:{} for t in TABLES}
   with self.assertRaisesRegex(ValueError,'northwind.db'):

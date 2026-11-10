@@ -2,13 +2,17 @@ import json
 import logging
 from typing import Dict, Any
 from app.llm.client import OllamaClient
-from app.llm.prompts import PLANNER_SYSTEM_PROMPT, PLANNER_USER_TEMPLATE
+from app.llm.prompts import PLANNER_USER_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
+# The typed schema is static. Build it outside individual request budgets.
+from app.analysis.operations import planner_instructions
+PLANNER_CONTRACT = planner_instructions()
+
 class QueryPlanner:
     @staticmethod
-    def plan_query(user_query: str, profile: Dict[str, Any], analysis_context=None) -> Dict[str, Any]:
+    def plan_query(user_query: str, profile: Dict[str, Any], analysis_context=None, diagnostics=None) -> Dict[str, Any]:
         """
         Classifies user query intent using schema info.
         Returns plan dictionary containing intent, reasoning, and operation parameters.
@@ -31,8 +35,7 @@ class QueryPlanner:
             sample_rows=sample_rows,
             user_query=user_query
         )
-        from app.services.analysis_context import CONTEXT_INSTRUCTIONS
-        prompt += '\n' + CONTEXT_INSTRUCTIONS + '\nSuccessful analysis history (no raw rows):\n' + json.dumps(analysis_context or {'recent_successes':[]})
+        prompt += '\nProject-local history: recent_successes are verified calculations; unresolved_request is unfulfilled intent, never a verified result. No raw result rows are included.\n' + json.dumps(analysis_context or {'recent_successes':[]})
         from app.services.metadata_service import MetadataService
         catalog=MetadataService.get_catalog_index()
         prompt += ('\nAUTHORITATIVE SOURCE CATALOG: active dataset ID is '+str(profile.get('dataset_id'))
@@ -43,17 +46,42 @@ class QueryPlanner:
         
         logger.info(f"Classifying query intent: '{user_query}'")
         
-        # Provider errors propagate: they must never become a conversation request.
-        raw_response = OllamaClient.call_model(
-            prompt=prompt, system_prompt=PLANNER_SYSTEM_PROMPT, json_format=True
-        )
-        try:
-            plan = json.loads(raw_response)
-        except (json.JSONDecodeError, TypeError):
-            raise ValueError("The model returned an invalid query plan. The analysis stopped.") from None
-        if not isinstance(plan, dict) or plan.get("intent") not in {"SIMPLE", "COMPLEX", "CONVERSATION"}:
-            raise ValueError("The model returned an unsupported query intent. The analysis stopped.")
-        return plan
+        from app.analysis.operations import validate_plan, planner_instructions, sanitize, ContractError
+        diagnostics=diagnostics if diagnostics is not None else []
+        system=PLANNER_CONTRACT
+        original=None;original_error_path=None
+        for attempt in range(2):
+            # Transport/auth errors are not schema failures and must never cause another call.
+            decoded=None
+            from app.services.request_control import report_progress
+            report_progress("repairing_plan" if attempt else "planning")
+            raw_response=OllamaClient.call_model(prompt=prompt,system_prompt=system,json_format=True)
+            try:
+                try:decoded=json.loads(raw_response)
+                except (json.JSONDecodeError,TypeError) as error:raise ContractError('$','invalid JSON: '+str(error)) from None
+                plan=validate_plan(decoded,history=analysis_context or {})
+                if attempt and original is not None:
+                    from app.analysis.operations import guard_repair
+                    guard_repair(original,decoded,original_error_path,history=analysis_context or {})
+                if plan.get('analysis_plan') and plan.get('context_action')=='inherit':
+                    from app.services.specification_context import validate_followup
+                    validate_followup(plan['analysis_plan'],analysis_context or {},plan.get('reference_message_id'),plan.get('changed_fields',[]))
+            except (ValueError,TypeError) as error:
+                from app.services.output_identity import OutputIdentityError
+                diagnostic={'attempt':attempt+1,'accepted':False,'error':sanitize(str(error)),
+                            'output':sanitize(decoded if decoded is not None else raw_response)}
+                diagnostics.append(diagnostic)
+                logger.info('Planner diagnostic: %s',json.dumps(diagnostic))
+                if isinstance(error,OutputIdentityError):raise
+                if not attempt:original=decoded;original_error_path=getattr(error,"path",None)
+                if attempt:raise ValueError('Planner schema repair exhausted after one attempt. '+str(error)) from None
+                prompt += ('\nSCHEMA REPAIR (only one attempt): '+str(error)+
+                           '\nRejected output: '+json.dumps(sanitize(decoded if decoded is not None else raw_response))+
+                           '\nReturn the same requested calculation in the valid typed schema. Preserve population, distinctness, formula, years, sources, units and scope. Do not simplify or substitute a different calculation.')
+                continue
+            diagnostic={'attempt':attempt+1,'accepted':True,'output':sanitize(plan)}
+            diagnostics.append(diagnostic);logger.info('Planner diagnostic: %s',json.dumps(diagnostic))
+            return plan
 
 class CodeGenerator:
     @staticmethod

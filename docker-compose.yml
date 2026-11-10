@@ -51,6 +51,7 @@ services:
       - PORT=8000
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_MODEL=qwen2.5-coder:7b
+      - CHAT_REQUEST_TIMEOUT_SECONDS=${CHAT_REQUEST_TIMEOUT_SECONDS:-120}
       - WORKSPACE_DIR=/app/workspace
       - DATASETS_DIR=/app/datasets
       - METADATA_DB_URL=sqlite:////app/workspace/metadata.db

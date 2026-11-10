@@ -1,0 +1,895 @@
+{
+  "diagnostics": {
+    "request_id": "5f19e140-711f-413b-bce7-fd12645e6a0f",
+    "started_at": "2026-11-10T21:44:35.548456+00:00",
+    "budget_seconds": 120.0,
+    "stages": [
+      {
+        "stage": "classifying",
+        "elapsed_ms": 28,
+        "timestamp": "2026-11-10T21:44:35.575956+00:00"
+      },
+      {
+        "stage": "planning",
+        "elapsed_ms": 66,
+        "timestamp": "2026-11-10T21:44:35.613962+00:00"
+      },
+      {
+        "stage": "repairing_plan",
+        "elapsed_ms": 47619,
+        "timestamp": "2026-11-10T21:45:23.171335+00:00"
+      }
+    ],
+    "model_calls": [
+      {
+        "number": 1,
+        "started_ms": 69,
+        "ended_ms": 47610,
+        "duration_ms": 47541
+      },
+      {
+        "number": 2,
+        "started_ms": 47621,
+        "ended_ms": 120008,
+        "duration_ms": 72387
+      }
+    ],
+    "model_call_count": 2,
+    "planner_diagnostics": [
+      {
+        "attempt": 1,
+        "accepted": false,
+        "error": "$.changed_fields[0]: unknown or ambiguous output in outputs.delivery_lateness_2025.parameters.filters.1.value",
+        "output": {
+          "intent": "SIMPLE",
+          "context_action": "inherit",
+          "reference_message_id": "8c9506d1-e431-4072-a337-7c8eae5e56fa",
+          "clarification": null,
+          "unsupported_reason": null,
+          "reasoning": null,
+          "analysis_plan": {
+            "source": {
+              "tables": [
+                "olist.db::orders"
+              ],
+              "join_keys": []
+            },
+            "outputs": [
+              {
+                "id": "delivery_lateness_2018",
+                "kind": "comparison_summary",
+                "parameters": {
+                  "column": "order_delivered_customer_date",
+                  "value_column": "order_estimated_delivery_date",
+                  "operator": ">",
+                  "value_type": "date",
+                  "date_part": "date",
+                  "matched_label": "Late Orders",
+                  "eligibility_filters": [
+                    {
+                      "column": "order_status",
+                      "operator": "==",
+                      "value": "delivered",
+                      "value_type": "string"
+                    },
+                    {
+                      "column": "order_purchase_timestamp",
+                      "operator": ">=",
+                      "value": "2018-01-01",
+                      "value_type": "date",
+                      "date_part": "date"
+                    },
+                    {
+                      "column": "order_purchase_timestamp",
+                      "operator": "<",
+                      "value": "2019-01-01",
+                      "value_type": "date",
+                      "date_part": "date"
+                    }
+                  ],
+                  "group_by": [],
+                  "sort_by": "percentage",
+                  "ascending": false,
+                  "count_label": "Comparable Orders",
+                  "comparison_label": "Estimated Delivery Date"
+                },
+                "source": null
+              }
+            ],
+            "chart_scope": {
+              "preference": "disabled",
+              "top_n": 10
+            },
+            "presentation": {
+              "table_in_chat": false,
+              "table_requested": false
+            }
+          },
+          "changed_fields": [
+            "outputs.delivery_lateness_2025.parameters.filters.1.value",
+            "outputs.delivery_lateness_2025.parameters.filters.2.value"
+          ]
+        }
+      }
+    ],
+    "status": "timed_out",
+    "elapsed_ms": 120002,
+    "phases": [
+      {
+        "phase": "planning",
+        "started_ms": 63,
+        "duration_ms": 119947.955
+      }
+    ]
+  },
+  "baseline": {
+    "question": "Among delivered orders purchased during calendar 2025, what percentage arrived late? Compare actual and estimated delivery calendar dates; same-day delivery is on time. Report comparable orders, late orders, and missing dates. If there are no comparable orders, report the percentage as undefined. No chart is needed.",
+    "user_message_id": "30fa7435-6129-4870-9ba6-408a7b6e09d4",
+    "request_id": "89e458e5-503b-4feb-8593-50cee6f376ca",
+    "request_stage": "completed",
+    "elapsed_ms": 16126,
+    "planner_diagnostics": [
+      {
+        "attempt": 1,
+        "accepted": true,
+        "output": {
+          "intent": "SIMPLE",
+          "context_action": "standalone",
+          "reference_message_id": null,
+          "clarification": null,
+          "unsupported_reason": null,
+          "reasoning": null,
+          "analysis_plan": {
+            "source": {
+              "tables": [
+                "olist.db::orders"
+              ],
+              "join_keys": [],
+              "database": null
+            },
+            "outputs": [
+              {
+                "id": "delivery_lateness_2025",
+                "kind": "comparison_summary",
+                "parameters": {
+                  "column": "order_delivered_customer_date",
+                  "value_column": "order_estimated_delivery_date",
+                  "operator": ">",
+                  "value_type": "date",
+                  "date_part": "date",
+                  "matched_label": "Late Orders",
+                  "eligibility_filters": [
+                    {
+                      "column": "order_status",
+                      "operator": "==",
+                      "value": "delivered",
+                      "value_type": "string"
+                    },
+                    {
+                      "column": "order_purchase_timestamp",
+                      "operator": ">=",
+                      "value": "2025-01-01",
+                      "value_type": "date",
+                      "date_part": "date"
+                    },
+                    {
+                      "column": "order_purchase_timestamp",
+                      "operator": "<",
+                      "value": "2026-01-01",
+                      "value_type": "date",
+                      "date_part": "date"
+                    }
+                  ],
+                  "group_by": [],
+                  "sort_by": "percentage",
+                  "ascending": false,
+                  "count_label": "Comparable Orders",
+                  "comparison_label": "Estimated Delivery Date"
+                },
+                "source": null
+              }
+            ],
+            "chart_scope": {
+              "preference": "disabled",
+              "top_n": 10
+            },
+            "presentation": {
+              "table_in_chat": false,
+              "table_requested": false
+            }
+          },
+          "request_requirements": null,
+          "changed_fields": []
+        }
+      }
+    ],
+    "requested_analysis": {
+      "source": {
+        "tables": [
+          "olist.db::orders"
+        ],
+        "join_keys": []
+      },
+      "outputs": [
+        {
+          "id": "delivery_lateness_2025",
+          "kind": "comparison_summary",
+          "parameters": {
+            "column": "order_delivered_customer_date",
+            "value_column": "order_estimated_delivery_date",
+            "operator": ">",
+            "value_type": "date",
+            "date_part": "date",
+            "matched_label": "Late Orders",
+            "eligibility_filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered",
+                "value_type": "string"
+              },
+              {
+                "column": "order_purchase_timestamp",
+                "operator": ">=",
+                "value": "2025-01-01",
+                "value_type": "date",
+                "date_part": "date"
+              },
+              {
+                "column": "order_purchase_timestamp",
+                "operator": "<",
+                "value": "2026-01-01",
+                "value_type": "date",
+                "date_part": "date"
+              }
+            ],
+            "group_by": [],
+            "sort_by": "percentage",
+            "ascending": false,
+            "count_label": "Comparable Orders",
+            "comparison_label": "Estimated Delivery Date"
+          },
+          "source": null
+        }
+      ],
+      "chart_scope": {
+        "preference": "disabled",
+        "top_n": 10
+      },
+      "presentation": {
+        "table_in_chat": false,
+        "table_requested": false
+      }
+    },
+    "analysis_failed": false,
+    "analysis_package": {
+      "version": 1,
+      "id": "8c9506d1-e431-4072-a337-7c8eae5e56fa",
+      "project_id": "794cbd5d-e430-49e9-934d-232b78eebea8",
+      "question": "Among delivered orders purchased during calendar 2025, what percentage arrived late? Compare actual and estimated delivery calendar dates; same-day delivery is on time. Report comparable orders, late orders, and missing dates. If there are no comparable orders, report the percentage as undefined. No chart is needed.",
+      "status": "complete",
+      "requirements": {
+        "outputs": [
+          {
+            "id": "delivery_lateness_2025",
+            "kind": "comparison_summary",
+            "parameters": {
+              "column": "order_delivered_customer_date",
+              "value_column": "order_estimated_delivery_date",
+              "operator": ">",
+              "value_type": "date",
+              "date_part": "date",
+              "matched_label": "Late Orders",
+              "eligibility_filters": [
+                {
+                  "column": "order_status",
+                  "operator": "==",
+                  "value": "delivered",
+                  "value_type": "string"
+                },
+                {
+                  "column": "order_purchase_timestamp",
+                  "operator": ">=",
+                  "value": "2025-01-01",
+                  "value_type": "date",
+                  "date_part": "date"
+                },
+                {
+                  "column": "order_purchase_timestamp",
+                  "operator": "<",
+                  "value": "2026-01-01",
+                  "value_type": "date",
+                  "date_part": "date"
+                }
+              ],
+              "group_by": [],
+              "sort_by": "percentage",
+              "ascending": false,
+              "count_label": "Comparable Orders",
+              "comparison_label": "Estimated Delivery Date"
+            },
+            "source_tables": [
+              "olist.db::orders"
+            ],
+            "join_keys": []
+          }
+        ],
+        "chart_scope": {
+          "preference": "disabled",
+          "top_n": 10
+        }
+      },
+      "request_requirements": null,
+      "completion_checks": [
+        {
+          "requirement_id": "delivery_lateness_2025",
+          "status": "passed",
+          "table_ids": [
+            "delivery_lateness_2025"
+          ]
+        }
+      ],
+      "incomplete_reasons": [],
+      "tables": [
+        {
+          "id": "delivery_lateness_2025",
+          "label": "Delivery Lateness 2025",
+          "result": {
+            "analysis_kind": "comparison_summary",
+            "columns": [
+              "Eligible Count",
+              "Missing Actual Date",
+              "Missing Comparison Date",
+              "Compared Count",
+              "Late Orders Count",
+              "Late Orders Percentage"
+            ],
+            "data": [
+              {
+                "Eligible Count": 0,
+                "Missing Actual Date": 0,
+                "Missing Comparison Date": 0,
+                "Compared Count": 0,
+                "Late Orders Count": 0,
+                "Late Orders Percentage": null
+              }
+            ],
+            "row_count": 1,
+            "measure_provenance": {
+              "Eligible Count": {
+                "operation": "eligible_count",
+                "source_column": "order_delivered_customer_date"
+              },
+              "Missing Actual Date": {
+                "operation": "missing_actual_count",
+                "source_column": "order_delivered_customer_date"
+              },
+              "Missing Comparison Date": {
+                "operation": "missing_comparison_count",
+                "source_column": "order_estimated_delivery_date"
+              },
+              "Compared Count": {
+                "operation": "comparable_count",
+                "source_column": "order_delivered_customer_date"
+              },
+              "Late Orders Count": {
+                "operation": "matched_count",
+                "source_column": "order_delivered_customer_date"
+              },
+              "Late Orders Percentage": {
+                "operation": "percentage",
+                "source_column": "order_delivered_customer_date"
+              }
+            },
+            "comparison_audit": {
+              "filtered_count": 0,
+              "eligible_count": 0,
+              "missing_actual_count": 0,
+              "missing_comparison_count": 0,
+              "comparable_count": 0,
+              "matched_count": 0,
+              "percentage": null,
+              "parameters": {
+                "column": "order_delivered_customer_date",
+                "value_column": "order_estimated_delivery_date",
+                "operator": ">",
+                "value_type": "date",
+                "date_part": "date",
+                "matched_label": "Late Orders",
+                "eligibility_filters": [
+                  {
+                    "column": "order_status",
+                    "operator": "==",
+                    "value": "delivered",
+                    "value_type": "string"
+                  },
+                  {
+                    "column": "order_purchase_timestamp",
+                    "operator": ">=",
+                    "value": "2025-01-01",
+                    "value_type": "date",
+                    "date_part": "date"
+                  },
+                  {
+                    "column": "order_purchase_timestamp",
+                    "operator": "<",
+                    "value": "2026-01-01",
+                    "value_type": "date",
+                    "date_part": "date"
+                  }
+                ],
+                "group_by": [],
+                "sort_by": "percentage",
+                "ascending": false,
+                "count_label": "Comparable Orders",
+                "comparison_label": "Estimated Delivery Date"
+              }
+            },
+            "units": {
+              "Late Orders Percentage": "%"
+            },
+            "operation_evidence": {
+              "kind": "comparison_summary",
+              "parameters": {
+                "column": "order_delivered_customer_date",
+                "value_column": "order_estimated_delivery_date",
+                "operator": ">",
+                "value_type": "date",
+                "date_part": "date",
+                "matched_label": "Late Orders",
+                "eligibility_filters": [
+                  {
+                    "column": "order_purchase_timestamp",
+                    "operator": "<",
+                    "value": "2026-01-01",
+                    "value_type": "date",
+                    "date_part": "date"
+                  },
+                  {
+                    "column": "order_purchase_timestamp",
+                    "operator": ">=",
+                    "value": "2025-01-01",
+                    "value_type": "date",
+                    "date_part": "date"
+                  },
+                  {
+                    "column": "order_status",
+                    "operator": "==",
+                    "value": "delivered",
+                    "value_type": "string"
+                  }
+                ],
+                "group_by": [],
+                "sort_by": "percentage",
+                "ascending": false,
+                "count_label": "Comparable Orders",
+                "comparison_label": "Estimated Delivery Date"
+              },
+              "result_sha256": "aa25cec70fc8f8bfd0a81c77938be767ba9d089f8df315c9f72af11005a4adfd"
+            }
+          },
+          "source": {
+            "tables": [
+              "olist.db::orders"
+            ],
+            "join_keys": []
+          },
+          "tool": "comparison_summary",
+          "parameters": {
+            "column": "order_delivered_customer_date",
+            "value_column": "order_estimated_delivery_date",
+            "operator": ">",
+            "value_type": "date",
+            "date_part": "date",
+            "matched_label": "Late Orders",
+            "eligibility_filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered",
+                "value_type": "string"
+              },
+              {
+                "column": "order_purchase_timestamp",
+                "operator": ">=",
+                "value": "2025-01-01",
+                "value_type": "date",
+                "date_part": "date"
+              },
+              {
+                "column": "order_purchase_timestamp",
+                "operator": "<",
+                "value": "2026-01-01",
+                "value_type": "date",
+                "date_part": "date"
+              }
+            ],
+            "group_by": [],
+            "sort_by": "percentage",
+            "ascending": false,
+            "count_label": "Comparable Orders",
+            "comparison_label": "Estimated Delivery Date"
+          },
+          "step_index": 0,
+          "completion_status": "complete"
+        }
+      ],
+      "charts": [],
+      "facts": [
+        {
+          "table_id": "delivery_lateness_2025",
+          "row_count": 1,
+          "units": {
+            "Late Orders Percentage": "%"
+          },
+          "source_observation_count": null,
+          "verification": null,
+          "comparison_audit": {
+            "filtered_count": 0,
+            "eligible_count": 0,
+            "missing_actual_count": 0,
+            "missing_comparison_count": 0,
+            "comparable_count": 0,
+            "matched_count": 0,
+            "percentage": null,
+            "parameters": {
+              "column": "order_delivered_customer_date",
+              "value_column": "order_estimated_delivery_date",
+              "operator": ">",
+              "value_type": "date",
+              "date_part": "date",
+              "matched_label": "Late Orders",
+              "eligibility_filters": [
+                {
+                  "column": "order_status",
+                  "operator": "==",
+                  "value": "delivered",
+                  "value_type": "string"
+                },
+                {
+                  "column": "order_purchase_timestamp",
+                  "operator": ">=",
+                  "value": "2025-01-01",
+                  "value_type": "date",
+                  "date_part": "date"
+                },
+                {
+                  "column": "order_purchase_timestamp",
+                  "operator": "<",
+                  "value": "2026-01-01",
+                  "value_type": "date",
+                  "date_part": "date"
+                }
+              ],
+              "group_by": [],
+              "sort_by": "percentage",
+              "ascending": false,
+              "count_label": "Comparable Orders",
+              "comparison_label": "Estimated Delivery Date"
+            }
+          },
+          "entity_audit": null,
+          "result_scope": null,
+          "transformation_audit": null
+        }
+      ],
+      "interpretation": [],
+      "provenance": {
+        "steps": [
+          {
+            "tool": "comparison_summary",
+            "parameters": {
+              "column": "order_delivered_customer_date",
+              "value_column": "order_estimated_delivery_date",
+              "operator": ">",
+              "value_type": "date",
+              "date_part": "date",
+              "matched_label": "Late Orders",
+              "eligibility_filters": [
+                {
+                  "column": "order_status",
+                  "operator": "==",
+                  "value": "delivered",
+                  "value_type": "string"
+                },
+                {
+                  "column": "order_purchase_timestamp",
+                  "operator": ">=",
+                  "value": "2025-01-01",
+                  "value_type": "date",
+                  "date_part": "date"
+                },
+                {
+                  "column": "order_purchase_timestamp",
+                  "operator": "<",
+                  "value": "2026-01-01",
+                  "value_type": "date",
+                  "date_part": "date"
+                }
+              ],
+              "group_by": [],
+              "sort_by": "percentage",
+              "ascending": false,
+              "count_label": "Comparable Orders",
+              "comparison_label": "Estimated Delivery Date"
+            },
+            "status": "succeeded",
+            "output_id": "delivery_lateness_2025",
+            "tables": [
+              "olist.db::orders"
+            ],
+            "join_keys": [],
+            "timings_ms": {
+              "source_validation": 0.258,
+              "data_loading": 486.364,
+              "calculation": 498.687,
+              "output_verification": 1.155
+            }
+          }
+        ]
+      },
+      "chart_scope": {
+        "preference": "disabled",
+        "top_n": 10
+      },
+      "presentation": {
+        "has_detail": true,
+        "table_ids": [
+          "delivery_lateness_2025"
+        ],
+        "chart_ids": [],
+        "table_requested": false
+      }
+    },
+    "analysis_status": "complete",
+    "analysis_context": {
+      "version": 1,
+      "plan": {
+        "source": {
+          "tables": [
+            "olist.db::orders"
+          ],
+          "join_keys": []
+        },
+        "outputs": [
+          {
+            "id": "delivery_lateness_2025",
+            "kind": "comparison_summary",
+            "parameters": {
+              "column": "order_delivered_customer_date",
+              "value_column": "order_estimated_delivery_date",
+              "operator": ">",
+              "value_type": "date",
+              "date_part": "date",
+              "matched_label": "Late Orders",
+              "eligibility_filters": [
+                {
+                  "column": "order_status",
+                  "operator": "==",
+                  "value": "delivered",
+                  "value_type": "string"
+                },
+                {
+                  "column": "order_purchase_timestamp",
+                  "operator": ">=",
+                  "value": "2025-01-01",
+                  "value_type": "date",
+                  "date_part": "date"
+                },
+                {
+                  "column": "order_purchase_timestamp",
+                  "operator": "<",
+                  "value": "2026-01-01",
+                  "value_type": "date",
+                  "date_part": "date"
+                }
+              ],
+              "group_by": [],
+              "sort_by": "percentage",
+              "ascending": false,
+              "count_label": "Comparable Orders",
+              "comparison_label": "Estimated Delivery Date"
+            },
+            "source": null
+          }
+        ],
+        "chart_scope": {
+          "preference": "disabled",
+          "top_n": 10
+        },
+        "presentation": {
+          "table_in_chat": false,
+          "table_requested": false
+        }
+      }
+    },
+    "calculation": {
+      "steps": [
+        {
+          "tool": "comparison_summary",
+          "parameters": {
+            "column": "order_delivered_customer_date",
+            "value_column": "order_estimated_delivery_date",
+            "operator": ">",
+            "value_type": "date",
+            "date_part": "date",
+            "matched_label": "Late Orders",
+            "eligibility_filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered",
+                "value_type": "string"
+              },
+              {
+                "column": "order_purchase_timestamp",
+                "operator": ">=",
+                "value": "2025-01-01",
+                "value_type": "date",
+                "date_part": "date"
+              },
+              {
+                "column": "order_purchase_timestamp",
+                "operator": "<",
+                "value": "2026-01-01",
+                "value_type": "date",
+                "date_part": "date"
+              }
+            ],
+            "group_by": [],
+            "sort_by": "percentage",
+            "ascending": false,
+            "count_label": "Comparable Orders",
+            "comparison_label": "Estimated Delivery Date"
+          },
+          "status": "succeeded",
+          "output_id": "delivery_lateness_2025",
+          "tables": [
+            "olist.db::orders"
+          ],
+          "join_keys": [],
+          "timings_ms": {
+            "source_validation": 0.258,
+            "data_loading": 486.364,
+            "calculation": 498.687,
+            "output_verification": 1.155
+          }
+        }
+      ]
+    },
+    "results": {
+      "analysis_kind": "comparison_summary",
+      "columns": [
+        "Eligible Count",
+        "Missing Actual Date",
+        "Missing Comparison Date",
+        "Compared Count",
+        "Late Orders Count",
+        "Late Orders Percentage"
+      ],
+      "data": [
+        {
+          "Eligible Count": 0,
+          "Missing Actual Date": 0,
+          "Missing Comparison Date": 0,
+          "Compared Count": 0,
+          "Late Orders Count": 0,
+          "Late Orders Percentage": null
+        }
+      ],
+      "row_count": 1,
+      "measure_provenance": {
+        "Eligible Count": {
+          "operation": "eligible_count",
+          "source_column": "order_delivered_customer_date"
+        },
+        "Missing Actual Date": {
+          "operation": "missing_actual_count",
+          "source_column": "order_delivered_customer_date"
+        },
+        "Missing Comparison Date": {
+          "operation": "missing_comparison_count",
+          "source_column": "order_estimated_delivery_date"
+        },
+        "Compared Count": {
+          "operation": "comparable_count",
+          "source_column": "order_delivered_customer_date"
+        },
+        "Late Orders Count": {
+          "operation": "matched_count",
+          "source_column": "order_delivered_customer_date"
+        },
+        "Late Orders Percentage": {
+          "operation": "percentage",
+          "source_column": "order_delivered_customer_date"
+        }
+      },
+      "comparison_audit": {
+        "filtered_count": 0,
+        "eligible_count": 0,
+        "missing_actual_count": 0,
+        "missing_comparison_count": 0,
+        "comparable_count": 0,
+        "matched_count": 0,
+        "percentage": null,
+        "parameters": {
+          "column": "order_delivered_customer_date",
+          "value_column": "order_estimated_delivery_date",
+          "operator": ">",
+          "value_type": "date",
+          "date_part": "date",
+          "matched_label": "Late Orders",
+          "eligibility_filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered",
+              "value_type": "string"
+            },
+            {
+              "column": "order_purchase_timestamp",
+              "operator": ">=",
+              "value": "2025-01-01",
+              "value_type": "date",
+              "date_part": "date"
+            },
+            {
+              "column": "order_purchase_timestamp",
+              "operator": "<",
+              "value": "2026-01-01",
+              "value_type": "date",
+              "date_part": "date"
+            }
+          ],
+          "group_by": [],
+          "sort_by": "percentage",
+          "ascending": false,
+          "count_label": "Comparable Orders",
+          "comparison_label": "Estimated Delivery Date"
+        }
+      },
+      "units": {
+        "Late Orders Percentage": "%"
+      },
+      "operation_evidence": {
+        "kind": "comparison_summary",
+        "parameters": {
+          "column": "order_delivered_customer_date",
+          "value_column": "order_estimated_delivery_date",
+          "operator": ">",
+          "value_type": "date",
+          "date_part": "date",
+          "matched_label": "Late Orders",
+          "eligibility_filters": [
+            {
+              "column": "order_purchase_timestamp",
+              "operator": "<",
+              "value": "2026-01-01",
+              "value_type": "date",
+              "date_part": "date"
+            },
+            {
+              "column": "order_purchase_timestamp",
+              "operator": ">=",
+              "value": "2025-01-01",
+              "value_type": "date",
+              "date_part": "date"
+            },
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered",
+              "value_type": "string"
+            }
+          ],
+          "group_by": [],
+          "sort_by": "percentage",
+          "ascending": false,
+          "count_label": "Comparable Orders",
+          "comparison_label": "Estimated Delivery Date"
+        },
+        "result_sha256": "aa25cec70fc8f8bfd0a81c77938be767ba9d089f8df315c9f72af11005a4adfd"
+      }
+    }
+  }
+}

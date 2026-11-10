@@ -8,6 +8,7 @@ Flow:
   4. Stops when LLM says "final_answer" or max turns reached
 """
 
+from app.services.request_control import checkpoint
 import json
 import ast
 import hashlib
@@ -27,8 +28,9 @@ from app.llm.prompts import (
 logger = logging.getLogger(__name__)
 
 # Which tools are allowed for each intent
+from app.analysis.operations import REGISTRY
 ALLOWED_TOOLS = {
-    "SIMPLE": {"comparison_summary", "monthly_revenue", "aggregation", "filtering", "statistics", "correlation", "visualization"},
+    "SIMPLE": set(REGISTRY),
     "COMPLEX": {"run_code"},
     "CONVERSATION": set(),  # no tools
 }
@@ -61,8 +63,6 @@ class Agent:
         max_turns: int = 5,
         emit=None,
         analysis_context=None,
-        resolved_analysis=None,
-        resolved_tool=None,
         completion_contract=None,
     ) -> Dict[str, Any]:
         """
@@ -80,8 +80,7 @@ class Agent:
         if intent in {"SIMPLE", "COMPLEX"}:
             emit("selecting_tables")
         if intent in {'SIMPLE','COMPLEX'}:
-            selection = TableSelector.select_tables(user_query,dataset_id,analysis_context=analysis_context,
-                resolved_source=resolved_analysis.get('source') if resolved_analysis else None) if analysis_context or resolved_analysis else TableSelector.select_tables(user_query,dataset_id)
+            selection = TableSelector.select_tables(user_query,dataset_id,analysis_context=analysis_context) if analysis_context else TableSelector.select_tables(user_query,dataset_id)
         else:
             selection = {}
         selected_tables = list(dict.fromkeys(selection.get("tables_needed", [dataset_id])))
@@ -102,61 +101,12 @@ class Agent:
         except Exception as error:
             return {
                 "failed": True,
-                "content": "I could not prepare the tables for analysis.",
+                "content": "I could not prepare the tables for analysis: "+str(error),
                 "type": "text",
                 "calculation": {"steps": [{"tool": "Prepare tables", "status": "failed", "error": str(error), **source}]},
             }
         dataset_id = selected_tables[0]
-        initial_tool_failure=None
-        comparison_required=bool(resolved_tool and resolved_tool.get('tool')=='comparison_summary')
-        if resolved_tool:
-            emit('running_tool')
-            observation,result=_execute_tool(resolved_tool['tool'],resolved_tool['parameters'],dataset_id,db,profile,
-                                             project_id=project_id,dataframe=dataframe)
-            step={'tool':resolved_tool['tool'],'parameters':resolved_tool['parameters'],'status':'succeeded' if result else 'failed',**source}
-            if not result:
-                step['error']=observation
-                steps.append(step)
-                failed_calls[_tool_fingerprint(resolved_tool['tool'],resolved_tool['parameters'])]=observation
-                initial_tool_failure=(resolved_tool,observation)
-            else:
-                from app.analysis.comparison_summary import explanation as compare_explanation
-                return {'type':'table','content':compare_explanation(result),'results':result,'calculation':{'steps':[step]}}
-        if resolved_analysis:
-            from app.analysis.calendar import calculate, explanation as calendar_explanation
-            resolved_analysis={**resolved_analysis,'source':{**source,'database':dataset_id.split('::',1)[0]}}
-            emit('running_tool')
-            step={'tool':'calendar_aggregate','parameters':resolved_analysis,'status':'failed',**source}
-            try:
-                if dataframe is None:
-                    dataframe=DatasetManager.load_dataset_dataframe(DatasetManager.get_dataset(db,dataset_id))
-                results=calculate(dataframe,resolved_analysis)
-            except (ValueError,TypeError,KeyError) as error:
-                step['error']=str(error)
-                return {'failed':True,'type':'text','content':f'I could not calculate the calendar analysis: {error}','calculation':{'steps':[step]}}
-            step['status']='succeeded'
-            emit('preparing_answer')
-            return {'type':'table','content':calendar_explanation(results),'results':results,
-                    'analysis_context':results['analysis_context'],'calculation':{'steps':[step]}}
-
-        # Standard calendar-month revenue is a supported deterministic calculation.
-        # The model selects source tables; it cannot replace the calculation with a preview.
-        from app.analysis.monthly_revenue import requested_year, explanation
-        monthly_year = requested_year(user_query)
-        if monthly_year is not None:
-            parameters = {"year":monthly_year,"date_column":"OrderDate","unit_price_column":"UnitPrice",
-                          "quantity_column":"Quantity","discount_column":"Discount"}
-            emit("running_tool")
-            observation, results = _execute_tool('monthly_revenue',parameters,dataset_id,db,profile,
-                                                 project_id=project_id,dataframe=dataframe)
-            step = {"tool":"monthly_revenue","parameters":parameters,"status":"succeeded" if results is not None else "failed",**source}
-            if results is None:
-                step['error'] = observation
-                return {"failed":True,"type":"text","content":"I could not calculate monthly revenue. "+observation,
-                        "calculation":{"steps":[step]}}
-            emit("preparing_answer")
-            return {"content":explanation(results),"type":"table","results":results,"calculation":{"steps":[step]}}
-
+        comparison_required=False
         from app.analysis.chart_consistency import wants_order_total_histogram, order_total_expectation, order_total_explanation
         chart_expectation = None
         if intent == 'COMPLEX' and wants_order_total_histogram(user_query):
@@ -237,12 +187,8 @@ class Agent:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_query},
         ]
-        if initial_tool_failure:
-            failed_tool,error=initial_tool_failure
-            from app.analysis.comparison_summary import contract_instructions
-            messages.extend([{'role':'assistant','content':json.dumps({'action':'tool_call',**failed_tool})},
-                             {'role':'user','content':'The planner-selected calculation failed: '+error+'\nCorrect the arguments using this contract, preserving the requested eligibility population. Do not repeat the same failed call or finalize an unrelated result.\n'+contract_instructions()}])
-
+        # At most one tool-schema correction in the fallback agent path.
+        schema_failures=0
         # Track results across turns
         last_results = None
         last_code = None
@@ -258,13 +204,9 @@ class Agent:
             if requires_correlation and (not last_results or last_results.get('analysis_kind') != 'correlation'):
                 return {'failed':True,'type':'text','content':'No validated numeric correlation matrix was returned. A chart image alone cannot answer this request.',
                     'calculation':{'steps':steps},'analysis_outputs':outputs.export()}
-            requires_monthly = intent == 'SIMPLE' and re.search(r'\bmonthly\s+revenue\b', user_query, re.I) and re.search(r'\b\d{4}\b', user_query)
-            verified_monthly = last_results is not None and last_results.get('analysis_kind') == 'monthly_revenue'
-            if requires_monthly and not verified_monthly:
-                error = 'Monthly revenue was requested, but no verified monthly aggregate was calculated. Raw rows or previews cannot answer this request.'
-                return {'failed':True,'content':error,'type':'text','calculation':{'steps':steps},'analysis_outputs':outputs.export()}
-            if verified_monthly:
-                content = explanation(last_results)
+            if last_results and last_results.get('analysis_kind')=='monthly_revenue':
+                from app.analysis.monthly_revenue import explanation
+                content=explanation(last_results)
             if last_results and last_results.get('analysis_kind') in {'aggregation','comparison_summary'}:
                 from app.analysis.result_operations import explanation as aggregate_explanation
                 from app.analysis.comparison_summary import explanation as comparison_explanation
@@ -285,6 +227,7 @@ class Agent:
         if intent == "CONVERSATION":
             emit("preparing_answer")
         for turn in range(max_turns):
+            checkpoint()
             logger.info(f"Agent turn {turn + 1}/{max_turns} | intent={intent}")
 
             # Call LLM with full message history
@@ -297,6 +240,7 @@ class Agent:
                 if (last_artifacts or (last_results and last_results.get('analysis_kind') == 'correlation')) and steps and steps[-1]["status"] == "succeeded":
                     return finish_answer("The chart was generated successfully. The model could not prepare the final explanation; open the captured result below.")
                 raise
+            checkpoint()
             logger.debug(f"Agent raw response: {raw_response}")
 
             # Parse the LLM's JSON response
@@ -338,8 +282,6 @@ class Agent:
                     if named:
                         parameters['columns'] = named
                 if tool_name=='aggregation' and isinstance(parameters,dict):
-                    from app.analysis.result_operations import normalize_request
-                    parameters=normalize_request(parameters,user_query)
                     from app.services.analysis_package import apply_output_contract
                     parameters=apply_output_contract(parameters,completion_contract,output_id)
                 fingerprint = _tool_fingerprint(tool_name, parameters)
@@ -388,7 +330,12 @@ class Agent:
                 if tool_results is None:
                     step["error"] = observation
                     failed_calls[fingerprint] = observation
+                    schema_failures+=1
                 steps.append(step)
+                if tool_results is None and schema_failures>1:
+                    return {'failed':True,'type':'text','content':'Tool schema repair exhausted after one correction. '+observation,
+                            'calculation':{'steps':steps},'analysis_outputs':outputs.export()}
+
 
                 # Track results for the response
                 if tool_results:
@@ -498,51 +445,26 @@ def _execute_tool(
     The raw_results is what gets returned to the frontend.
     """
 
-    # --- SIMPLE tools: use AnalysisEngine ---
-    if tool_name in {"comparison_summary", "monthly_revenue", "aggregation", "filtering", "statistics", "correlation", "visualization"}:
+    # Every built-in operation uses the shared typed registry and executor.
+    from app.analysis.operations import REGISTRY,execute
+    if tool_name in REGISTRY:
         try:
-            from app.analysis_engine import AnalysisEngine
-
-            # Build the execution plan in the format AnalysisEngine expects
-            exec_plan = {}
-            if tool_name == "aggregation":
-                exec_plan["aggregation"] = parameters
-            elif tool_name=='comparison_summary':
-                from app.analysis.comparison_summary import normalize_parameters
-                exec_plan['comparison_summary']=normalize_parameters(parameters)
-            elif tool_name == "monthly_revenue":
-                exec_plan["monthly_revenue"] = parameters
-            elif tool_name == "filtering":
-                if not isinstance(parameters,dict) or set(parameters) != {'filters'}:
-                    raise ValueError('Filtering expects {"filters":[{"column":"OrderDate","operator":">=","value":"2022-01-01"},{"column":"OrderDate","operator":"<","value":"2023-01-01"}]}. Unknown fields cannot be ignored.')
-                exec_plan["filters"] = parameters['filters']
-            elif tool_name == "statistics":
-                exec_plan["statistics"] = parameters
-            elif tool_name == "correlation":
-                if not isinstance(parameters, dict) or set(parameters) - {'method', 'columns'}:
-                    raise ValueError('Correlation expects {"method":"pearson","columns":["UnitPrice","Quantity","Discount"]}.')
-                exec_plan["correlation"] = True
-                exec_plan["correlation_method"] = parameters.get("method", "pearson")
-                exec_plan['correlation_columns'] = parameters.get('columns')
-            elif tool_name == "visualization":
-                exec_plan["visualization"] = parameters
-
-            results = AnalysisEngine.execute_plan(db, dataset_id, exec_plan, dataframe=dataframe, validate_tool_arguments=True)
-
-            # Build a concise observation for the agent
-            observation = _summarize_results(results)
-            return observation, results
-
-        except Exception as e:
-            error_msg = f"Tool '{tool_name}' failed: {e}"
-            logger.error(error_msg)
-            return error_msg, None
+            frame=dataframe
+            if frame is None:
+                dataset=DatasetManager.get_dataset(db,dataset_id)
+                if not dataset:raise ValueError('Dataset not found.')
+                frame=DatasetManager.load_dataset_dataframe(dataset)
+            results=execute(tool_name,parameters,frame)
+            return _summarize_results(results),results
+        except Exception as error:
+            message=f"Tool '{tool_name}' failed: {error}"
+            logger.error(message)
+            return message,None
 
     # --- COMPLEX tool: use SandboxRunner ---
     if tool_name == "run_code":
         try:
             from app.sandbox.runner import SandboxRunner
-            from app.services.dataset_manager import DatasetManager
 
             code = parameters.get("code", "")
             db_dataset = DatasetManager.get_dataset(db, dataset_id)

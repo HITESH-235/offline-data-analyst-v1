@@ -64,7 +64,7 @@ class PythonCorrelationTest(unittest.TestCase):
                     self.assertEqual(response['artifacts'],[])
                 self.assertEqual(response['calculation']['steps'][0]['tool'],'run_code')
                 self.assertEqual(response['calculation']['steps'][0]['parameters']['code'],code)
-                self.assertIn('heatmap in Chart',response['content'])
+                self.assertIn('verified heatmap',response['content']);self.assertIn('Open result → Chart',response['content'])
                 self.assertNotIn('Only a PNG',response['content'])
             self.assertEqual(len(set(ids)),3)
             saved=list_saved_analyses('test',db)

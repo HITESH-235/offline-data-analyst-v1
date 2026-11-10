@@ -77,6 +77,8 @@ class TableSelector:
         databases={name.split('::',1)[0] for name in tables_meta if '::' in name}
         if database is not None and database not in databases:
             raise ValueError(f'Unknown source database {database!r}. Use a database from the catalog.')
+        if database and any('::' in name and name.split('::',1)[0]!=database for name in names):
+            raise ValueError('Source database conflicts with explicit qualified table identifiers.')
         scope=database or (active_dataset_id.split('::',1)[0] if '::' in active_dataset_id else None)
         if scope is None:
             qualified={name.split('::',1)[0] for name in names if name in tables_meta and '::' in name}

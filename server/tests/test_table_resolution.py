@@ -55,7 +55,10 @@ class TableResolutionTest(unittest.TestCase):
   state={'source':SOURCE,'metric':{'name':'Paid Total (BRL)','aggregation':'sum','expression':{'op':'multiply','args':[{'column':'payment_total_cents'},{'value':.01}]}},'date_column':'order_purchase_timestamp','years':[2017],'grain':'month','compare':False,'filters':[],'output':{'table':True,'chart':'line'}}
   # Missing payments are unknown, not zero; the known absent-payment order is in 2016.
   with patch('app.llm.agent.OllamaClient.call_model_chat') as model:
-   response=Agent.run(QUESTION,'SIMPLE',{},'olist.db::order_financials',resolved_analysis=state)
+   from app.services.planned_analysis import run
+   resolved=TableSelector.resolve_selection({'tables_needed':SOURCE['tables'],'join_keys':SOURCE['join_keys']},MetadataService.get_catalog_index()['tables'],'olist.db::order_financials')
+   source={'tables':resolved['tables_needed'],'join_keys':resolved['join_keys']};state['source']=source
+   response,_=run({'source':source,'outputs':[{'id':'calendar','kind':'calendar_aggregate','parameters':state}]},None,lambda s:None)
   self.assertFalse(response.get('failed',False),response);model.assert_not_called()
   self.assertEqual(response['results']['row_count'],12)
   self.assertEqual(response['analysis_context']['source']['tables'],['olist.db::order_financials','olist.db::orders'])

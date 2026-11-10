@@ -1,0 +1,132 @@
+{
+  "request_id": "cb6230e6-a97b-4dca-891d-8baf58d57e44",
+  "planner_output": {
+    "intent": "SIMPLE",
+    "context_action": "standalone",
+    "reference_message_id": null,
+    "clarification": null,
+    "unsupported_reason": null,
+    "reasoning": "Supported comparison_summary operation: late means order_delivered_customer_date is strictly after order_estimated_delivery_date (same-day is on time); restrict to delivered orders; join orders to customers on customer_id; group by customer_state; return comparable orders, late orders, late percentage, and missing dates separately; sort by late percentage descending.",
+    "analysis_plan": {
+      "source": {
+        "tables": [
+          "olist.db::orders",
+          "olist.db::customers"
+        ],
+        "join_keys": [
+          {
+            "from_table": "olist.db::orders",
+            "from_column": "customer_id",
+            "to_table": "olist.db::customers",
+            "to_column": "customer_id"
+          }
+        ],
+        "database": null
+      },
+      "outputs": [
+        {
+          "id": "requested_comparison",
+          "kind": "comparison_summary",
+          "parameters": {
+            "column": "order_delivered_customer_date",
+            "value_column": "order_estimated_delivery_date",
+            "operator": ">",
+            "value_type": "date",
+            "date_part": "date",
+            "matched_label": "Late",
+            "eligibility_filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              }
+            ],
+            "group_by": [
+              "customer_state"
+            ],
+            "sort_by": "percentage",
+            "ascending": false,
+            "count_label": "Orders",
+            "comparison_label": "Estimated"
+          },
+          "source": {
+            "tables": [
+              "olist.db::orders",
+              "olist.db::customers"
+            ],
+            "join_keys": [
+              {
+                "from_table": "olist.db::orders",
+                "from_column": "customer_id",
+                "to_table": "olist.db::customers",
+                "to_column": "customer_id"
+              }
+            ],
+            "database": null
+          }
+        }
+      ]
+    },
+    "request_requirements": {
+      "outputs": [
+        {
+          "id": "requested_comparison",
+          "kind": "comparison_summary",
+          "parameters": {
+            "column": "order_delivered_customer_date",
+            "value_column": "order_estimated_delivery_date",
+            "operator": ">",
+            "value_type": "date",
+            "date_part": "date",
+            "matched_label": "Late",
+            "eligibility_filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              }
+            ],
+            "group_by": [
+              "customer_state"
+            ],
+            "sort_by": "percentage",
+            "ascending": false,
+            "count_label": "Orders",
+            "comparison_label": "Estimated"
+          },
+          "source_tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ],
+          "join_keys": [
+            {
+              "from_table": "olist.db::orders",
+              "from_column": "customer_id",
+              "to_table": "olist.db::customers",
+              "to_column": "customer_id"
+            }
+          ],
+          "group_by": [
+            "customer_state"
+          ],
+          "filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered"
+            }
+          ],
+          "measures": [
+            {
+              "operation": "comparison_summary",
+              "output": "Late orders / comparable orders / late percentage / missing dates"
+            }
+          ],
+          "sort_by": "percentage",
+          "ascending": false
+        }
+      ]
+    },
+    "changed_fields": []
+  }
+}

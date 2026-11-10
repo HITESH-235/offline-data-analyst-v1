@@ -1,0 +1,72 @@
+{
+  "question": "For delivered orders purchased during 2018, compare average review scores for late versus on-time deliveries. Compare actual and estimated calendar dates, treating same-day delivery as on time. Average reviews within each order_id first, then weight every order equally. Report exclusions for missing dates or reviews.",
+  "plan": {
+    "intent": "SIMPLE",
+    "analysis_plan": {
+      "source": {
+        "tables": [
+          "olist.db::orders",
+          "olist.db::order_reviews"
+        ],
+        "join_keys": [
+          {
+            "from_table": "olist.db::order_reviews",
+            "from_column": "order_id",
+            "to_table": "olist.db::orders",
+            "to_column": "order_id"
+          }
+        ]
+      },
+      "outputs": [
+        {
+          "id": "review_comparison",
+          "kind": "entity_comparison",
+          "parameters": {
+            "population_table": "olist.db::orders",
+            "observations_table": "olist.db::order_reviews",
+            "entity_key": "order_id",
+            "observation_key": "order_id",
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_purchase_timestamp",
+                "operator": ">=",
+                "value": "2018-01-01",
+                "value_type": "date",
+                "date_part": "date"
+              },
+              {
+                "column": "order_purchase_timestamp",
+                "operator": "<",
+                "value": "2019-01-01",
+                "value_type": "date",
+                "date_part": "date"
+              }
+            ],
+            "measurement": {
+              "name": "Average Review Score",
+              "expression": {
+                "column": "review_score"
+              },
+              "unit": "score"
+            },
+            "comparison": {
+              "column": "order_delivered_customer_date",
+              "value_column": "order_estimated_delivery_date",
+              "operator": ">",
+              "value_type": "date",
+              "date_part": "date"
+            },
+            "matched_label": "Late",
+            "unmatched_label": "On time",
+            "entity_label": "Orders"
+          }
+        }
+      ]
+    }
+  }
+}

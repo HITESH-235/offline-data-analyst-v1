@@ -32,7 +32,7 @@ def load_context(db, project_id):
     safe=case((valid,DBChatHistory.metadata_json),else_='{}')
     def field(path):return func.json_extract(safe,path)
     rows=db.query(DBChatHistory.id,func.substr(field('$.question'),1,1000),
-                  func.substr(func.coalesce(field('$.results.analysis_context'),field('$.analysis_context')),1,16000),
+                  func.substr(func.coalesce(field('$.analysis_context'),field('$.results.analysis_context')),1,16000),
                   func.substr(field('$.calculation'),1,16000),field('$.analysis_failed')).filter(
         DBChatHistory.project_id==project_id,DBChatHistory.role=='assistant',valid,
         func.coalesce(field('$.analysis_failed'),0)==0,
@@ -45,8 +45,13 @@ def load_context(db, project_id):
             steps=json.loads(calculation or '{}').get('steps',[])
             if not steps or steps[-1].get('status')!='succeeded':continue
             state=json.loads(context) if context else None
+            # Legacy result-native state is authoritative for old calendar rows.
+            if not (isinstance(state,dict) and state.get('version')==1):
+                native=db.query(func.json_extract(DBChatHistory.metadata_json,'$.results.analysis_context')).filter(DBChatHistory.id==ident).scalar()
+                if native:state=json.loads(native)
+            state=_historical_context(state,steps)
             step=steps[-1]
-            source=state.get('source') if state else None
+            source=state['plan']['source'] if state else None
             source=source or {'tables':step.get('tables',[]),'join_keys':step.get('join_keys',[])}
             entry={'message_id':ident,'question':question,'source':source,'analysis':state}
             if not state:
@@ -57,70 +62,54 @@ def load_context(db, project_id):
             history.append(entry)
             if len(history)==3:break
         except (ValueError,TypeError):continue
-    return {'recent_successes':history}
-
-
-def grouping_update(question, history):
-    """Resolve a reference-only calendar grouping edit without rewriting its scope."""
-    if re.search(r'\d', question):return None
-    words=re.findall(r'[a-z]+', question.lower())
-    grains={'monthly':'month','month':'month','months':'month','quarterly':'quarter','quarter':'quarter',
-            'quarters':'quarter','annually':'year','annual':'year','yearly':'year','year':'year','years':'year'}
-    allowed={'now','please','show','display','present','plot','group','regroup','break','down','by','per','instead',
-             'it','that','this','those','these','them','the','same','as','a','on','basis','can','could','you','we','see','make'}
-    requested={grains[word] for word in words if word in grains}
-    if (len(requested)!=1 or not set(words)&{'it','that','this','those','these','them','same'}
-            or any(word not in allowed and word not in grains for word in words)):
-        return None
-    successes=history.get('recent_successes',[])
-    if not successes:return {'intent':'SIMPLE','context_action':'clarify','clarification':'Which analysis should I regroup? Please specify its metric and years.'}
-    latest=successes[0];state=latest.get('analysis') or {}
-    if not all(key in state for key in ('source','metric','date_column','years','grain')):
-        return None  # Legacy records still need semantic reconstruction from bounded facts.
-    return {'intent':'SIMPLE','context_action':'inherit','reference_message_id':latest['message_id'],
-            'resolved_analysis':{'grain':requested.pop()},'resolution_kind':'grouping_update'}
-
-
-CONTEXT_INSTRUCTIONS='''
-You also resolve analysis references BEFORE table selection and execution.
-The bounded successful-analysis history below is project-local. Failed turns and generic advice do not replace a successful analysis.
-Return context_action: "standalone", "inherit", or "clarify". Inherit only when the current question refers to previous analysis (pronouns, continuation, changing its grouping or comparison). Standalone explicit questions MUST NOT inherit old filters or metrics.
-When inheriting, provide reference_message_id from recent_successes for the relevant successful analysis. Use the latest relevant success; if more than one could be intended, clarify instead of choosing silently.
-If the reference or an explicit source/metric change is ambiguous, return context_action:"clarify" and a concise clarification question; do not guess.
-For calendar sums/counts, include resolved_analysis with this JSON structure:
-{"source":{"tables":["database.db::Table"],"join_keys":[]},"metric":{"name":"Revenue","aggregation":"sum","expression":{"op":"multiply","args":[{"column":"UnitPrice"},{"column":"Quantity"},{"op":"subtract","args":[{"value":1},{"column":"Discount"}]}]}},"date_column":"OrderDate","years":[2021],"grain":"month","compare":false,"filters":[],"output":{"table":true,"chart":"line"}}
-This is an expression schema, NOT a Northwind-only template: select actual columns/formula for the requested metric. Supported expression operators: multiply, subtract, add; leaves column or finite numeric value. Count uses aggregation:"count" and no expression. Sum Freight uses expression:{"column":"Freight"}.
-Allowed grains: month, quarter, year. For comparison use all requested years including the referenced base year; compare:true aligns periods across years. Preserve all unrelated predicates, metric/formula, date column, canonical source table IDs, and declared join keys. Replace only what the user explicitly changes. years encodes calendar-year filtering; do not duplicate obsolete date filters in filters. Include relevant non-date filters as validated predicates.
-Use prior structured analysis when present, otherwise reconstruct from its verified successful tool parameters/code facts and question. Never use narrative preview rows to establish calculations. If reconstruction is uncertain, clarify.
-A follow-up calendar request MUST execute an analysis, not be classified as CONVERSATION. Return intent:SIMPLE with resolved_analysis for supported calendar calculations. Other follow-ups should include resolved_query, a complete standalone analytical question retaining prior formula, source, filters and grouping, for the existing agent tools.
-'''
+    result={'recent_successes':history}
+    latest=db.query(DBChatHistory).filter(DBChatHistory.project_id==project_id,DBChatHistory.role=='assistant').order_by(DBChatHistory.created_at.desc(),DBChatHistory.id.desc()).first()
+    if latest:
+        try:
+            meta=json.loads(latest.metadata_json or '{}');request=meta.get('requested_analysis') or {}
+            if meta.get('unresolved_intent'):
+                result['unresolved_request']={'message_id':latest.id,'succeeded':False,**meta['unresolved_intent']}
+            elif meta.get('analysis_failed') and request:
+                states=[o['parameters'] for o in request.get('outputs',[]) if o.get('kind')=='calendar_aggregate']
+                state=states[0] if len(states)==1 else request if request.get('date_column') else None
+                result['unresolved_request']={'message_id':latest.id,'question':meta.get('question'),'succeeded':False,'state':state}
+        except (ValueError,TypeError):pass
+    return result
 
 
 def from_result(result):
-    package=result.get('analysis_package')
-    if package and package.get('status')!='complete':return None
-    if package and package.get('tables'):
-        tables=package['tables'];primary=tables[0]
-        native=primary['result'].get('analysis_context')
-        if native:return copy.deepcopy(native)
-        if primary['result'].get('analysis_kind')!='monthly_revenue':
-            return {'source':copy.deepcopy(primary['source']),'tool':primary['tool'],
-                    'parameters':copy.deepcopy(primary['parameters']),
-                    'outputs':[{'id':t['id'],'source':copy.deepcopy(t['source']),'tool':t['tool'],
-                                'parameters':copy.deepcopy(t['parameters']),
-                                'columns':t['result']['columns'],'units':t['result'].get('units',{})} for t in tables]}
-    resolved=(result.get('results') or {}).get('analysis_context') or result.get('analysis_context')
-    if resolved:return copy.deepcopy(resolved)
-    data=result.get('results') or {};steps=(result.get('calculation') or {}).get('steps',[])
-    if not steps or steps[-1].get('status')!='succeeded':return None
-    step=steps[-1];source={'tables':step.get('tables',[]),'join_keys':step.get('join_keys',[])}
-    if data.get('analysis_kind')=='monthly_revenue':
-        p=step.get('parameters',{});year=data['verification']['year']
-        return {'source':source,'metric':{'name':'Revenue','aggregation':'sum','expression':{'op':'multiply','args':[
-            {'op':'multiply','args':[{'column':p.get('unit_price_column','UnitPrice')},{'column':p.get('quantity_column','Quantity')}]},
-            {'op':'subtract','args':[{'value':1},{'column':p.get('discount_column','Discount')}]}]}},
-            'date_column':p.get('date_column','OrderDate'),'years':[year],'grain':'month','compare':False,'filters':[],
-            'output':{'table':True,'chart':'line'}}
-    context={'source':source,'tool':step.get('tool'),'parameters':{k:v for k,v in step.get('parameters',{}).items() if k!='code'}}
-    if step.get('tool')=='run_code':context['code_facts']=code_facts(step.get('parameters',{}).get('code',''))
-    return context
+    package=result.get('analysis_package') or {}
+    if package.get('status')!='complete' or not result.get('analysis_plan'):return None
+    from app.analysis.operations import validate_plan
+    plan=validate_plan({'intent':'SIMPLE','analysis_plan':result['analysis_plan']})['analysis_plan']
+    return {'version':1,'plan':copy.deepcopy(plan)}
+
+
+def _historical_context(state, steps):
+    """Read-only adapter for records written before the canonical envelope."""
+    if isinstance(state,dict) and state.get('version')==1 and state.get('plan'):
+        state=copy.deepcopy(state)
+        from app.services.output_identity import index_outputs
+        index_outputs(state['plan']['outputs'])
+        from app.analysis.operations import validate
+        for out in state['plan'].get('outputs',[]):
+            if out.get('kind')=='statistics' and 'statistics' not in out['parameters']:
+                from app.analysis.statistics import LEGACY_STATISTICS
+                out['parameters']={**out['parameters'],'statistics':list(LEGACY_STATISTICS)}
+            if out.get('kind')=='aggregation':out['parameters']=validate('aggregation',out['parameters'])
+        return state
+    if isinstance(state,dict) and state.get('metric') and state.get('date_column'):
+        params=copy.deepcopy(state);source=params.pop('source',None)
+        if source:return {'version':1,'plan':{'source':source,'outputs':[{'id':'primary','kind':'calendar_aggregate','parameters':params}]}}
+    step=steps[-1] if steps else {}
+    if state and state.get('tool') and state['tool']!='run_code':
+        items=state.get('outputs') or [state]
+        if len(items)>1 and any(not o.get('id') for o in items):return None
+        outputs=[{'id':o.get('id','primary'),'kind':o['tool'],'parameters':o.get('parameters',{}),
+                  'source':o.get('source') or state.get('source')} for i,o in enumerate(items)]
+        return {'version':1,'plan':{'source':state.get('source') or {'tables':step.get('tables',[]),'join_keys':step.get('join_keys',[])},'outputs':outputs}}
+    if step.get('tool')=='monthly_revenue':
+        # Existing saved monthly results retain their original arithmetic/schema.
+        return {'version':1,'plan':{'source':{'tables':step.get('tables',[]),'join_keys':step.get('join_keys',[])},
+                'outputs':[{'id':'primary','kind':'monthly_revenue','parameters':step.get('parameters',{})}]}}
+    return None

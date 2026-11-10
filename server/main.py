@@ -32,6 +32,7 @@ app.add_middleware(
     allow_origins=["*"], # allows all origins
     allow_credentials=True,
     allow_methods=["*"], # allows all methods (GET, POST, DELETE, UPDATE, etc.)
+    expose_headers=["X-Request-Timeout-Seconds"],
     allow_headers=["*"], # allows all headers
 )
 

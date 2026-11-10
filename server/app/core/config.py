@@ -1,6 +1,7 @@
 import os
 import logging # used for printing logs
 from pydantic_settings import BaseSettings
+from pydantic import Field
 
 class Settings(BaseSettings):
     APP_NAME: str = os.getenv("APP_NAME", "Offline AI Data Analyst")
@@ -23,6 +24,8 @@ class Settings(BaseSettings):
     # Database configurations
     METADATA_DB_URL: str = os.getenv("METADATA_DB_URL", "sqlite:///workspace/metadata.db")
     
+    CHAT_REQUEST_TIMEOUT_SECONDS: float = Field(default=120.0, gt=0, le=3600)
+
     # Ollama configurations
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")

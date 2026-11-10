@@ -1,14 +1,7 @@
 """Deterministic calendar-month revenue from a resolved line-item dataframe."""
-import re
 import numpy as np
 import pandas as pd
 from app.analysis.filtering import filter_data, parse_dates
-
-
-def requested_year(question):
-    # A bounded, explicit request shape: complex comparisons still use the agent.
-    match = re.fullmatch(r'\s*(?:(?:please\s+)?(?:show|calculate|compute|give|get)\s+(?:me\s+)?)?monthly\s+revenue\s+(?:for\s+|in\s+)?(?:the\s+)?(?:year\s+)?(\d{4})\s*[.!?]?\s*', question, re.I)
-    return int(match[1]) if match else None
 
 
 def calculate_monthly_revenue(df, parameters):

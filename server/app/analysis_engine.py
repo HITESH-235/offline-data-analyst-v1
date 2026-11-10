@@ -59,7 +59,8 @@ class AnalysisEngine:
             if not isinstance(column, str) or column not in columns:
                 raise ValueError(f"Unknown aggregation column {column!r}. Available columns: {', '.join(map(str, columns))}. {example}")
 
-        operations = ("mean", "sum", "count", "min", "max")
+        from app.analysis.operations import AGGREGATIONS
+        operations = AGGREGATIONS
         for column, operation in measures.items():
             if operation not in operations:
                 raise ValueError(f"Unsupported operation {operation!r} for {column!r}. Supported operations: {', '.join(operations)}. {example}")
@@ -71,10 +72,10 @@ class AnalysisEngine:
         output_columns += list(aggregation.get('output_names',{}).values())
         output_columns += [t.get('as') for t in aggregation.get('transforms',[]) if isinstance(t,dict)]
         output_columns += [t.get('name') for t in aggregation.get('derived_measures',[]) if isinstance(t,dict)]
-        if any(op=='count' for op in measures.values()):
+        if any(op in {'count','count_distinct'} for op in measures.values()):
             from app.analysis.result_operations import human
             import re
-            output_columns += [human(re.sub(r'[_ .]?id$','',c,flags=re.I))+' Count' for c,op in measures.items() if op=='count']
+            output_columns += [human(re.sub(r'[_ .]?id$','',c,flags=re.I))+(' Distinct Count' if op=='count_distinct' else ' Count') for c,op in measures.items() if op in {'count','count_distinct'}]
             if len(measures)==1:output_columns.append('count')
         if sort_by is not None and sort_by not in output_columns:
             raise ValueError(f"Unknown sort column {sort_by!r}. Result columns: {', '.join(output_columns)}. {example}")
@@ -94,8 +95,11 @@ class AnalysisEngine:
             dataframe = DatasetManager.load_dataset_dataframe(db_dataset)
         df = dataframe.copy()
 
-        # Light cleanup
+        # Shared typed validation precedes execution; aliases are explicit.
         plan = cls.normalize_plan(plan)
+        if "aggregation" in plan:
+            from app.analysis.operations import validate
+            plan["aggregation"]=validate("aggregation",plan["aggregation"],"$.aggregation",df.columns)
 
         results = {}
         if 'comparison_summary' in plan:
@@ -121,7 +125,7 @@ class AnalysisEngine:
         stats = plan.get("statistics")
         if stats:
             cols = stats.get("columns", []) if isinstance(stats, dict) else []
-            results["statistics"] = ana.compute_statistics(df, cols)
+            results["statistics"] = ana.compute_statistics(df, cols, stats.get("statistics"))
 
         # 3. Compute Correlation
         if plan.get("correlation"):
@@ -135,10 +139,13 @@ class AnalysisEngine:
         # 4. Apply Aggregation
         aggregation = plan.get("aggregation")
         if validate_tool_arguments and "aggregation" in plan:
-            cls.validate_aggregation(aggregation, df.columns)
+            from app.analysis.aggregate_specification import kernel
+            cls.validate_aggregation(kernel(aggregation), df.columns)
         if aggregation:
             from app.analysis.result_operations import apply_aggregation
-            return {**results,**apply_aggregation(df,aggregation)}
+            from app.analysis.operations import stamp
+            if filters:aggregation={**aggregation,"filters":[*filters,*aggregation.get("filters",[])]}
+            return stamp("aggregation",aggregation,{**results,**apply_aggregation(df,aggregation)})
 
         # 5. Visualization blueprint
         viz = plan.get("visualization")
@@ -149,7 +156,8 @@ class AnalysisEngine:
         # input dataframe as a newly calculated table.
         if "statistics" in plan and not aggregation and not filters and not viz:
             if isinstance(stats, dict) and stats.get("return_table") is True:
-                metrics = ["mean", "std", "min", "median", "max", "q25", "q75", "outliers_count"]
+                from app.analysis.statistics import DEFAULT_STATISTICS
+                metrics = list(stats.get("statistics",DEFAULT_STATISTICS))
                 summary = pd.DataFrame([
                     {"column": column, **{metric: values.get(metric) for metric in metrics}}
                     for column, values in results["statistics"].items()
@@ -157,6 +165,12 @@ class AnalysisEngine:
                 results["columns"] = list(summary.columns)
                 results["data"] = summary.astype(object).where(pd.notna(summary), None).to_dict(orient="records")
                 results["row_count"] = len(summary)
+                results["analysis_kind"] = 'statistics'
+                results["units"] = {m:stats['unit'] for m in metrics if m not in {'count','outliers_count','outliers_percentage'} and stats.get('unit')}
+                results["units"].update({m:("%" if m=="outliers_percentage" else "count") for m in metrics if m in {"count","outliers_count","outliers_percentage"}})
+                results["measure_provenance"] = {m:{'operation':m} for m in metrics}
+                if len(metrics)==1 and metrics[0]!='outliers_percentage' and pd.api.types.is_numeric_dtype(summary[metrics[0]]):
+                    results['visualization_blueprint']={'chart_type':'bar','x':'column','y':metrics[0],'title':metrics[0]+' by column'}
             return results
 
         # Pack output

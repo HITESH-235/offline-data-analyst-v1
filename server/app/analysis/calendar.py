@@ -25,7 +25,8 @@ def evaluate(node,df,depth=0):
 
 
 def calculate(df,state):
-    state=copy.deepcopy(state)
+    from app.analysis.operations import validate
+    state=validate("calendar_aggregate",state,"$.calendar")
     grain=state.get('grain');years=state.get('years');metric=state.get('metric',{})
     if grain not in {'month','quarter','year'}:raise ValueError('Grouping must be month, quarter, or year.')
     if not isinstance(years,list) or not years or len(years)>10 or any(type(y)!=int or not 1678<=y<=2260 for y in years):raise ValueError('Provide one to ten valid calendar years.')

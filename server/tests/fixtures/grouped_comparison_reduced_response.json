@@ -1,0 +1,2343 @@
+{
+  "response_id": "ccea12bc-5a66-458f-9a74-6664fcc5ebe4",
+  "request_id": "ee27646a-ad39-44b7-8b31-753b47b17314",
+  "question": "Among delivered orders, compare the calendar date of order_delivered_customer_date with order_estimated_delivery_date. Same-day delivery is on time. Join customers on customer_id and return every customer_state with comparable orders, late orders, and late percentage. Exclude missing dates from each percentage denominator and report missing dates separately. Sort by late percentage descending.",
+  "planner_output": {
+    "intent": "SIMPLE",
+    "context_action": "standalone",
+    "reference_message_id": null,
+    "clarification": null,
+    "unsupported_reason": null,
+    "reasoning": "Standalone analysis comparing order_delivered_customer_date to order_estimated_delivery_date for delivered orders, joined with customers to get customer_state. Comparable orders exclude missing dates; late means delivery date strictly after estimated date. Missing dates are counted separately per state. Late percentage can be derived as late_orders / comparable_orders * 100; outputs are sorted by late_orders descending as the closest supported sort.",
+    "analysis_plan": {
+      "source": {
+        "tables": [
+          "olist.db::orders",
+          "olist.db::customers"
+        ],
+        "join_keys": [
+          {
+            "from_table": "olist.db::orders",
+            "from_column": "customer_id",
+            "to_table": "olist.db::customers",
+            "to_column": "customer_id"
+          }
+        ],
+        "database": null
+      },
+      "outputs": [
+        {
+          "id": "total_delivered_by_state",
+          "kind": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              }
+            ],
+            "output_names": {
+              "order_id": "total_delivered_orders"
+            },
+            "ascending": true
+          }
+        },
+        {
+          "id": "comparable_orders_by_state",
+          "kind": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": "!=",
+                "value": null
+              },
+              {
+                "column": "order_estimated_delivery_date",
+                "operator": "!=",
+                "value": null
+              }
+            ],
+            "output_names": {
+              "order_id": "comparable_orders"
+            },
+            "ascending": true
+          }
+        },
+        {
+          "id": "late_orders_by_state",
+          "kind": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": ">",
+                "value_column": "order_estimated_delivery_date",
+                "value_type": "date",
+                "date_part": "date"
+              }
+            ],
+            "output_names": {
+              "order_id": "late_orders"
+            },
+            "sort_by": "late_orders",
+            "ascending": false
+          }
+        },
+        {
+          "id": "missing_delivered_date_by_state",
+          "kind": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": "==",
+                "value": null
+              }
+            ],
+            "output_names": {
+              "order_id": "missing_delivered_date"
+            },
+            "ascending": true
+          }
+        },
+        {
+          "id": "missing_estimated_date_by_state",
+          "kind": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_estimated_delivery_date",
+                "operator": "==",
+                "value": null
+              }
+            ],
+            "output_names": {
+              "order_id": "missing_estimated_date"
+            },
+            "ascending": true
+          }
+        }
+      ]
+    }
+  },
+  "analysis_package": {
+    "version": 1,
+    "id": "ccea12bc-5a66-458f-9a74-6664fcc5ebe4",
+    "project_id": "f18c556e-73be-4418-b1db-c0eb54c384e7",
+    "question": "Among delivered orders, compare the calendar date of order_delivered_customer_date with order_estimated_delivery_date. Same-day delivery is on time. Join customers on customer_id and return every customer_state with comparable orders, late orders, and late percentage. Exclude missing dates from each percentage denominator and report missing dates separately. Sort by late percentage descending.",
+    "status": "complete",
+    "requirements": {
+      "outputs": [
+        {
+          "id": "total_delivered_by_state",
+          "kind": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              }
+            ],
+            "output_names": {
+              "order_id": "total_delivered_orders"
+            },
+            "ascending": true
+          },
+          "source_tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ]
+        },
+        {
+          "id": "comparable_orders_by_state",
+          "kind": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": "!=",
+                "value": null
+              },
+              {
+                "column": "order_estimated_delivery_date",
+                "operator": "!=",
+                "value": null
+              }
+            ],
+            "output_names": {
+              "order_id": "comparable_orders"
+            },
+            "ascending": true
+          },
+          "source_tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ]
+        },
+        {
+          "id": "late_orders_by_state",
+          "kind": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": ">",
+                "value_column": "order_estimated_delivery_date",
+                "value_type": "date",
+                "date_part": "date"
+              }
+            ],
+            "output_names": {
+              "order_id": "late_orders"
+            },
+            "sort_by": "late_orders",
+            "ascending": false
+          },
+          "source_tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ]
+        },
+        {
+          "id": "missing_delivered_date_by_state",
+          "kind": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": "==",
+                "value": null
+              }
+            ],
+            "output_names": {
+              "order_id": "missing_delivered_date"
+            },
+            "ascending": true
+          },
+          "source_tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ]
+        },
+        {
+          "id": "missing_estimated_date_by_state",
+          "kind": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_estimated_delivery_date",
+                "operator": "==",
+                "value": null
+              }
+            ],
+            "output_names": {
+              "order_id": "missing_estimated_date"
+            },
+            "ascending": true
+          },
+          "source_tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ]
+        }
+      ],
+      "chart_scope": {}
+    },
+    "completion_checks": [
+      {
+        "requirement_id": "total_delivered_by_state",
+        "status": "passed",
+        "table_ids": [
+          "total_delivered_by_state"
+        ]
+      },
+      {
+        "requirement_id": "comparable_orders_by_state",
+        "status": "passed",
+        "table_ids": [
+          "comparable_orders_by_state"
+        ]
+      },
+      {
+        "requirement_id": "late_orders_by_state",
+        "status": "passed",
+        "table_ids": [
+          "late_orders_by_state"
+        ]
+      },
+      {
+        "requirement_id": "missing_delivered_date_by_state",
+        "status": "passed",
+        "table_ids": [
+          "missing_delivered_date_by_state"
+        ]
+      },
+      {
+        "requirement_id": "missing_estimated_date_by_state",
+        "status": "passed",
+        "table_ids": [
+          "missing_estimated_date_by_state"
+        ]
+      }
+    ],
+    "incomplete_reasons": [],
+    "tables": [
+      {
+        "id": "total_delivered_by_state",
+        "label": "Total Delivered By State",
+        "result": {
+          "group_populations": [
+            {
+              "groups": {
+                "customer_state": "AC"
+              },
+              "count": 80
+            },
+            {
+              "groups": {
+                "customer_state": "AL"
+              },
+              "count": 397
+            },
+            {
+              "groups": {
+                "customer_state": "AM"
+              },
+              "count": 145
+            },
+            {
+              "groups": {
+                "customer_state": "AP"
+              },
+              "count": 67
+            },
+            {
+              "groups": {
+                "customer_state": "BA"
+              },
+              "count": 3256
+            },
+            {
+              "groups": {
+                "customer_state": "CE"
+              },
+              "count": 1279
+            },
+            {
+              "groups": {
+                "customer_state": "DF"
+              },
+              "count": 2080
+            },
+            {
+              "groups": {
+                "customer_state": "ES"
+              },
+              "count": 1995
+            },
+            {
+              "groups": {
+                "customer_state": "GO"
+              },
+              "count": 1957
+            },
+            {
+              "groups": {
+                "customer_state": "MA"
+              },
+              "count": 717
+            },
+            {
+              "groups": {
+                "customer_state": "MG"
+              },
+              "count": 11354
+            },
+            {
+              "groups": {
+                "customer_state": "MS"
+              },
+              "count": 701
+            },
+            {
+              "groups": {
+                "customer_state": "MT"
+              },
+              "count": 886
+            },
+            {
+              "groups": {
+                "customer_state": "PA"
+              },
+              "count": 946
+            },
+            {
+              "groups": {
+                "customer_state": "PB"
+              },
+              "count": 517
+            },
+            {
+              "groups": {
+                "customer_state": "PE"
+              },
+              "count": 1593
+            },
+            {
+              "groups": {
+                "customer_state": "PI"
+              },
+              "count": 476
+            },
+            {
+              "groups": {
+                "customer_state": "PR"
+              },
+              "count": 4923
+            },
+            {
+              "groups": {
+                "customer_state": "RJ"
+              },
+              "count": 12350
+            },
+            {
+              "groups": {
+                "customer_state": "RN"
+              },
+              "count": 474
+            },
+            {
+              "groups": {
+                "customer_state": "RO"
+              },
+              "count": 243
+            },
+            {
+              "groups": {
+                "customer_state": "RR"
+              },
+              "count": 41
+            },
+            {
+              "groups": {
+                "customer_state": "RS"
+              },
+              "count": 5345
+            },
+            {
+              "groups": {
+                "customer_state": "SC"
+              },
+              "count": 3546
+            },
+            {
+              "groups": {
+                "customer_state": "SE"
+              },
+              "count": 335
+            },
+            {
+              "groups": {
+                "customer_state": "SP"
+              },
+              "count": 40501
+            },
+            {
+              "groups": {
+                "customer_state": "TO"
+              },
+              "count": 274
+            }
+          ],
+          "analysis_kind": "aggregation",
+          "columns": [
+            "customer_state",
+            "total_delivered_orders"
+          ],
+          "data": [
+            {
+              "customer_state": "AC",
+              "total_delivered_orders": 80
+            },
+            {
+              "customer_state": "AL",
+              "total_delivered_orders": 397
+            },
+            {
+              "customer_state": "AM",
+              "total_delivered_orders": 145
+            },
+            {
+              "customer_state": "AP",
+              "total_delivered_orders": 67
+            },
+            {
+              "customer_state": "BA",
+              "total_delivered_orders": 3256
+            },
+            {
+              "customer_state": "CE",
+              "total_delivered_orders": 1279
+            },
+            {
+              "customer_state": "DF",
+              "total_delivered_orders": 2080
+            },
+            {
+              "customer_state": "ES",
+              "total_delivered_orders": 1995
+            },
+            {
+              "customer_state": "GO",
+              "total_delivered_orders": 1957
+            },
+            {
+              "customer_state": "MA",
+              "total_delivered_orders": 717
+            },
+            {
+              "customer_state": "MG",
+              "total_delivered_orders": 11354
+            },
+            {
+              "customer_state": "MS",
+              "total_delivered_orders": 701
+            },
+            {
+              "customer_state": "MT",
+              "total_delivered_orders": 886
+            },
+            {
+              "customer_state": "PA",
+              "total_delivered_orders": 946
+            },
+            {
+              "customer_state": "PB",
+              "total_delivered_orders": 517
+            },
+            {
+              "customer_state": "PE",
+              "total_delivered_orders": 1593
+            },
+            {
+              "customer_state": "PI",
+              "total_delivered_orders": 476
+            },
+            {
+              "customer_state": "PR",
+              "total_delivered_orders": 4923
+            },
+            {
+              "customer_state": "RJ",
+              "total_delivered_orders": 12350
+            },
+            {
+              "customer_state": "RN",
+              "total_delivered_orders": 474
+            },
+            {
+              "customer_state": "RO",
+              "total_delivered_orders": 243
+            },
+            {
+              "customer_state": "RR",
+              "total_delivered_orders": 41
+            },
+            {
+              "customer_state": "RS",
+              "total_delivered_orders": 5345
+            },
+            {
+              "customer_state": "SC",
+              "total_delivered_orders": 3546
+            },
+            {
+              "customer_state": "SE",
+              "total_delivered_orders": 335
+            },
+            {
+              "customer_state": "SP",
+              "total_delivered_orders": 40501
+            },
+            {
+              "customer_state": "TO",
+              "total_delivered_orders": 274
+            }
+          ],
+          "row_count": 27,
+          "measure_provenance": {
+            "total_delivered_orders": {
+              "source_column": "order_id",
+              "operation": "count_distinct",
+              "role": "measure"
+            }
+          },
+          "units": {},
+          "source_observation_count": 96478,
+          "result_scope": {
+            "full_group_count": 27,
+            "returned_row_count": 27,
+            "limit": null,
+            "sort_by": null,
+            "ascending": true
+          },
+          "transformation_audit": {
+            "fill_missing": {},
+            "transforms": [],
+            "output_names": {
+              "order_id": "total_delivered_orders"
+            }
+          },
+          "operation_evidence": {
+            "kind": "aggregation",
+            "parameters": {
+              "group_by": [
+                "customer_state"
+              ],
+              "aggregations": {
+                "order_id": "count_distinct"
+              },
+              "filters": [
+                {
+                  "column": "order_status",
+                  "operator": "==",
+                  "value": "delivered"
+                }
+              ],
+              "output_names": {
+                "order_id": "total_delivered_orders"
+              },
+              "transforms": [],
+              "derived_measures": [],
+              "fill_missing": {},
+              "ascending": true
+            },
+            "result_sha256": "9d1b541f8ca3be991545a4107e135f93e49b10e3ceca075dec1d5cb14c248b18"
+          }
+        },
+        "source": {
+          "tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ],
+          "join_keys": [
+            {
+              "from_table": "olist.db::orders",
+              "from_column": "customer_id",
+              "to_table": "olist.db::customers",
+              "to_column": "customer_id"
+            }
+          ]
+        },
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "customer_state"
+          ],
+          "aggregations": {
+            "order_id": "count_distinct"
+          },
+          "filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered"
+            }
+          ],
+          "output_names": {
+            "order_id": "total_delivered_orders"
+          },
+          "ascending": true
+        },
+        "step_index": 0,
+        "completion_status": "complete"
+      },
+      {
+        "id": "comparable_orders_by_state",
+        "label": "Comparable Orders By State",
+        "result": {
+          "group_populations": [
+            {
+              "groups": {
+                "customer_state": "AC"
+              },
+              "count": 80
+            },
+            {
+              "groups": {
+                "customer_state": "AL"
+              },
+              "count": 397
+            },
+            {
+              "groups": {
+                "customer_state": "AM"
+              },
+              "count": 145
+            },
+            {
+              "groups": {
+                "customer_state": "AP"
+              },
+              "count": 67
+            },
+            {
+              "groups": {
+                "customer_state": "BA"
+              },
+              "count": 3256
+            },
+            {
+              "groups": {
+                "customer_state": "CE"
+              },
+              "count": 1279
+            },
+            {
+              "groups": {
+                "customer_state": "DF"
+              },
+              "count": 2080
+            },
+            {
+              "groups": {
+                "customer_state": "ES"
+              },
+              "count": 1995
+            },
+            {
+              "groups": {
+                "customer_state": "GO"
+              },
+              "count": 1957
+            },
+            {
+              "groups": {
+                "customer_state": "MA"
+              },
+              "count": 717
+            },
+            {
+              "groups": {
+                "customer_state": "MG"
+              },
+              "count": 11354
+            },
+            {
+              "groups": {
+                "customer_state": "MS"
+              },
+              "count": 701
+            },
+            {
+              "groups": {
+                "customer_state": "MT"
+              },
+              "count": 886
+            },
+            {
+              "groups": {
+                "customer_state": "PA"
+              },
+              "count": 946
+            },
+            {
+              "groups": {
+                "customer_state": "PB"
+              },
+              "count": 517
+            },
+            {
+              "groups": {
+                "customer_state": "PE"
+              },
+              "count": 1593
+            },
+            {
+              "groups": {
+                "customer_state": "PI"
+              },
+              "count": 476
+            },
+            {
+              "groups": {
+                "customer_state": "PR"
+              },
+              "count": 4923
+            },
+            {
+              "groups": {
+                "customer_state": "RJ"
+              },
+              "count": 12350
+            },
+            {
+              "groups": {
+                "customer_state": "RN"
+              },
+              "count": 474
+            },
+            {
+              "groups": {
+                "customer_state": "RO"
+              },
+              "count": 243
+            },
+            {
+              "groups": {
+                "customer_state": "RR"
+              },
+              "count": 41
+            },
+            {
+              "groups": {
+                "customer_state": "RS"
+              },
+              "count": 5344
+            },
+            {
+              "groups": {
+                "customer_state": "SC"
+              },
+              "count": 3546
+            },
+            {
+              "groups": {
+                "customer_state": "SE"
+              },
+              "count": 335
+            },
+            {
+              "groups": {
+                "customer_state": "SP"
+              },
+              "count": 40494
+            },
+            {
+              "groups": {
+                "customer_state": "TO"
+              },
+              "count": 274
+            }
+          ],
+          "analysis_kind": "aggregation",
+          "columns": [
+            "customer_state",
+            "comparable_orders"
+          ],
+          "data": [
+            {
+              "customer_state": "AC",
+              "comparable_orders": 80
+            },
+            {
+              "customer_state": "AL",
+              "comparable_orders": 397
+            },
+            {
+              "customer_state": "AM",
+              "comparable_orders": 145
+            },
+            {
+              "customer_state": "AP",
+              "comparable_orders": 67
+            },
+            {
+              "customer_state": "BA",
+              "comparable_orders": 3256
+            },
+            {
+              "customer_state": "CE",
+              "comparable_orders": 1279
+            },
+            {
+              "customer_state": "DF",
+              "comparable_orders": 2080
+            },
+            {
+              "customer_state": "ES",
+              "comparable_orders": 1995
+            },
+            {
+              "customer_state": "GO",
+              "comparable_orders": 1957
+            },
+            {
+              "customer_state": "MA",
+              "comparable_orders": 717
+            },
+            {
+              "customer_state": "MG",
+              "comparable_orders": 11354
+            },
+            {
+              "customer_state": "MS",
+              "comparable_orders": 701
+            },
+            {
+              "customer_state": "MT",
+              "comparable_orders": 886
+            },
+            {
+              "customer_state": "PA",
+              "comparable_orders": 946
+            },
+            {
+              "customer_state": "PB",
+              "comparable_orders": 517
+            },
+            {
+              "customer_state": "PE",
+              "comparable_orders": 1593
+            },
+            {
+              "customer_state": "PI",
+              "comparable_orders": 476
+            },
+            {
+              "customer_state": "PR",
+              "comparable_orders": 4923
+            },
+            {
+              "customer_state": "RJ",
+              "comparable_orders": 12350
+            },
+            {
+              "customer_state": "RN",
+              "comparable_orders": 474
+            },
+            {
+              "customer_state": "RO",
+              "comparable_orders": 243
+            },
+            {
+              "customer_state": "RR",
+              "comparable_orders": 41
+            },
+            {
+              "customer_state": "RS",
+              "comparable_orders": 5344
+            },
+            {
+              "customer_state": "SC",
+              "comparable_orders": 3546
+            },
+            {
+              "customer_state": "SE",
+              "comparable_orders": 335
+            },
+            {
+              "customer_state": "SP",
+              "comparable_orders": 40494
+            },
+            {
+              "customer_state": "TO",
+              "comparable_orders": 274
+            }
+          ],
+          "row_count": 27,
+          "measure_provenance": {
+            "comparable_orders": {
+              "source_column": "order_id",
+              "operation": "count_distinct",
+              "role": "measure"
+            }
+          },
+          "units": {},
+          "source_observation_count": 96470,
+          "result_scope": {
+            "full_group_count": 27,
+            "returned_row_count": 27,
+            "limit": null,
+            "sort_by": null,
+            "ascending": true
+          },
+          "transformation_audit": {
+            "fill_missing": {},
+            "transforms": [],
+            "output_names": {
+              "order_id": "comparable_orders"
+            }
+          },
+          "operation_evidence": {
+            "kind": "aggregation",
+            "parameters": {
+              "group_by": [
+                "customer_state"
+              ],
+              "aggregations": {
+                "order_id": "count_distinct"
+              },
+              "filters": [
+                {
+                  "column": "order_delivered_customer_date",
+                  "operator": "!=",
+                  "value": null
+                },
+                {
+                  "column": "order_estimated_delivery_date",
+                  "operator": "!=",
+                  "value": null
+                },
+                {
+                  "column": "order_status",
+                  "operator": "==",
+                  "value": "delivered"
+                }
+              ],
+              "output_names": {
+                "order_id": "comparable_orders"
+              },
+              "transforms": [],
+              "derived_measures": [],
+              "fill_missing": {},
+              "ascending": true
+            },
+            "result_sha256": "b50df360bd99605051794dd8fdd99873739438268cfb58f48e304f7144b23d51"
+          }
+        },
+        "source": {
+          "tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ],
+          "join_keys": [
+            {
+              "from_table": "olist.db::orders",
+              "from_column": "customer_id",
+              "to_table": "olist.db::customers",
+              "to_column": "customer_id"
+            }
+          ]
+        },
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "customer_state"
+          ],
+          "aggregations": {
+            "order_id": "count_distinct"
+          },
+          "filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered"
+            },
+            {
+              "column": "order_delivered_customer_date",
+              "operator": "!=",
+              "value": null
+            },
+            {
+              "column": "order_estimated_delivery_date",
+              "operator": "!=",
+              "value": null
+            }
+          ],
+          "output_names": {
+            "order_id": "comparable_orders"
+          },
+          "ascending": true
+        },
+        "step_index": 1,
+        "completion_status": "complete"
+      },
+      {
+        "id": "late_orders_by_state",
+        "label": "Late Orders By State",
+        "result": {
+          "group_populations": [
+            {
+              "groups": {
+                "customer_state": "AC"
+              },
+              "count": 3
+            },
+            {
+              "groups": {
+                "customer_state": "AL"
+              },
+              "count": 85
+            },
+            {
+              "groups": {
+                "customer_state": "AM"
+              },
+              "count": 4
+            },
+            {
+              "groups": {
+                "customer_state": "AP"
+              },
+              "count": 2
+            },
+            {
+              "groups": {
+                "customer_state": "BA"
+              },
+              "count": 396
+            },
+            {
+              "groups": {
+                "customer_state": "CE"
+              },
+              "count": 176
+            },
+            {
+              "groups": {
+                "customer_state": "DF"
+              },
+              "count": 118
+            },
+            {
+              "groups": {
+                "customer_state": "ES"
+              },
+              "count": 214
+            },
+            {
+              "groups": {
+                "customer_state": "GO"
+              },
+              "count": 128
+            },
+            {
+              "groups": {
+                "customer_state": "MA"
+              },
+              "count": 125
+            },
+            {
+              "groups": {
+                "customer_state": "MG"
+              },
+              "count": 519
+            },
+            {
+              "groups": {
+                "customer_state": "MS"
+              },
+              "count": 68
+            },
+            {
+              "groups": {
+                "customer_state": "MT"
+              },
+              "count": 53
+            },
+            {
+              "groups": {
+                "customer_state": "PA"
+              },
+              "count": 106
+            },
+            {
+              "groups": {
+                "customer_state": "PB"
+              },
+              "count": 54
+            },
+            {
+              "groups": {
+                "customer_state": "PE"
+              },
+              "count": 153
+            },
+            {
+              "groups": {
+                "customer_state": "PI"
+              },
+              "count": 66
+            },
+            {
+              "groups": {
+                "customer_state": "PR"
+              },
+              "count": 199
+            },
+            {
+              "groups": {
+                "customer_state": "RJ"
+              },
+              "count": 1495
+            },
+            {
+              "groups": {
+                "customer_state": "RN"
+              },
+              "count": 44
+            },
+            {
+              "groups": {
+                "customer_state": "RO"
+              },
+              "count": 7
+            },
+            {
+              "groups": {
+                "customer_state": "RR"
+              },
+              "count": 5
+            },
+            {
+              "groups": {
+                "customer_state": "RS"
+              },
+              "count": 325
+            },
+            {
+              "groups": {
+                "customer_state": "SC"
+              },
+              "count": 291
+            },
+            {
+              "groups": {
+                "customer_state": "SE"
+              },
+              "count": 51
+            },
+            {
+              "groups": {
+                "customer_state": "SP"
+              },
+              "count": 1820
+            },
+            {
+              "groups": {
+                "customer_state": "TO"
+              },
+              "count": 27
+            }
+          ],
+          "analysis_kind": "aggregation",
+          "columns": [
+            "customer_state",
+            "late_orders"
+          ],
+          "data": [
+            {
+              "customer_state": "SP",
+              "late_orders": 1820
+            },
+            {
+              "customer_state": "RJ",
+              "late_orders": 1495
+            },
+            {
+              "customer_state": "MG",
+              "late_orders": 519
+            },
+            {
+              "customer_state": "BA",
+              "late_orders": 396
+            },
+            {
+              "customer_state": "RS",
+              "late_orders": 325
+            },
+            {
+              "customer_state": "SC",
+              "late_orders": 291
+            },
+            {
+              "customer_state": "ES",
+              "late_orders": 214
+            },
+            {
+              "customer_state": "PR",
+              "late_orders": 199
+            },
+            {
+              "customer_state": "CE",
+              "late_orders": 176
+            },
+            {
+              "customer_state": "PE",
+              "late_orders": 153
+            },
+            {
+              "customer_state": "GO",
+              "late_orders": 128
+            },
+            {
+              "customer_state": "MA",
+              "late_orders": 125
+            },
+            {
+              "customer_state": "DF",
+              "late_orders": 118
+            },
+            {
+              "customer_state": "PA",
+              "late_orders": 106
+            },
+            {
+              "customer_state": "AL",
+              "late_orders": 85
+            },
+            {
+              "customer_state": "MS",
+              "late_orders": 68
+            },
+            {
+              "customer_state": "PI",
+              "late_orders": 66
+            },
+            {
+              "customer_state": "PB",
+              "late_orders": 54
+            },
+            {
+              "customer_state": "MT",
+              "late_orders": 53
+            },
+            {
+              "customer_state": "SE",
+              "late_orders": 51
+            },
+            {
+              "customer_state": "RN",
+              "late_orders": 44
+            },
+            {
+              "customer_state": "TO",
+              "late_orders": 27
+            },
+            {
+              "customer_state": "RO",
+              "late_orders": 7
+            },
+            {
+              "customer_state": "RR",
+              "late_orders": 5
+            },
+            {
+              "customer_state": "AM",
+              "late_orders": 4
+            },
+            {
+              "customer_state": "AC",
+              "late_orders": 3
+            },
+            {
+              "customer_state": "AP",
+              "late_orders": 2
+            }
+          ],
+          "row_count": 27,
+          "measure_provenance": {
+            "late_orders": {
+              "source_column": "order_id",
+              "operation": "count_distinct",
+              "role": "measure"
+            }
+          },
+          "units": {},
+          "source_observation_count": 6534,
+          "result_scope": {
+            "full_group_count": 27,
+            "returned_row_count": 27,
+            "limit": null,
+            "sort_by": "late_orders",
+            "ascending": false
+          },
+          "transformation_audit": {
+            "fill_missing": {},
+            "transforms": [],
+            "output_names": {
+              "order_id": "late_orders"
+            }
+          },
+          "operation_evidence": {
+            "kind": "aggregation",
+            "parameters": {
+              "group_by": [
+                "customer_state"
+              ],
+              "aggregations": {
+                "order_id": "count_distinct"
+              },
+              "filters": [
+                {
+                  "column": "order_delivered_customer_date",
+                  "operator": ">",
+                  "value_column": "order_estimated_delivery_date",
+                  "value_type": "date",
+                  "date_part": "date"
+                },
+                {
+                  "column": "order_status",
+                  "operator": "==",
+                  "value": "delivered"
+                }
+              ],
+              "output_names": {
+                "order_id": "late_orders"
+              },
+              "transforms": [],
+              "derived_measures": [],
+              "fill_missing": {},
+              "sort_by": "late_orders",
+              "ascending": false
+            },
+            "result_sha256": "02cfbb5aa32cfe52b5f9f563c5f0e72397254b333242484b17a33aefbba56cee"
+          }
+        },
+        "source": {
+          "tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ],
+          "join_keys": [
+            {
+              "from_table": "olist.db::orders",
+              "from_column": "customer_id",
+              "to_table": "olist.db::customers",
+              "to_column": "customer_id"
+            }
+          ]
+        },
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "customer_state"
+          ],
+          "aggregations": {
+            "order_id": "count_distinct"
+          },
+          "filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered"
+            },
+            {
+              "column": "order_delivered_customer_date",
+              "operator": ">",
+              "value_column": "order_estimated_delivery_date",
+              "value_type": "date",
+              "date_part": "date"
+            }
+          ],
+          "output_names": {
+            "order_id": "late_orders"
+          },
+          "sort_by": "late_orders",
+          "ascending": false
+        },
+        "step_index": 2,
+        "completion_status": "complete"
+      },
+      {
+        "id": "missing_delivered_date_by_state",
+        "label": "Missing Delivered Date By State",
+        "result": {
+          "group_populations": [
+            {
+              "groups": {
+                "customer_state": "RS"
+              },
+              "count": 1
+            },
+            {
+              "groups": {
+                "customer_state": "SP"
+              },
+              "count": 7
+            }
+          ],
+          "analysis_kind": "aggregation",
+          "columns": [
+            "customer_state",
+            "missing_delivered_date"
+          ],
+          "data": [
+            {
+              "customer_state": "RS",
+              "missing_delivered_date": 1
+            },
+            {
+              "customer_state": "SP",
+              "missing_delivered_date": 7
+            }
+          ],
+          "row_count": 2,
+          "measure_provenance": {
+            "missing_delivered_date": {
+              "source_column": "order_id",
+              "operation": "count_distinct",
+              "role": "measure"
+            }
+          },
+          "units": {},
+          "source_observation_count": 8,
+          "result_scope": {
+            "full_group_count": 2,
+            "returned_row_count": 2,
+            "limit": null,
+            "sort_by": null,
+            "ascending": true
+          },
+          "transformation_audit": {
+            "fill_missing": {},
+            "transforms": [],
+            "output_names": {
+              "order_id": "missing_delivered_date"
+            }
+          },
+          "operation_evidence": {
+            "kind": "aggregation",
+            "parameters": {
+              "group_by": [
+                "customer_state"
+              ],
+              "aggregations": {
+                "order_id": "count_distinct"
+              },
+              "filters": [
+                {
+                  "column": "order_delivered_customer_date",
+                  "operator": "==",
+                  "value": null
+                },
+                {
+                  "column": "order_status",
+                  "operator": "==",
+                  "value": "delivered"
+                }
+              ],
+              "output_names": {
+                "order_id": "missing_delivered_date"
+              },
+              "transforms": [],
+              "derived_measures": [],
+              "fill_missing": {},
+              "ascending": true
+            },
+            "result_sha256": "c86653369037fb66d572c3b12366c217ac0cd97f13b912de29417cf87ca9528a"
+          }
+        },
+        "source": {
+          "tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ],
+          "join_keys": [
+            {
+              "from_table": "olist.db::orders",
+              "from_column": "customer_id",
+              "to_table": "olist.db::customers",
+              "to_column": "customer_id"
+            }
+          ]
+        },
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "customer_state"
+          ],
+          "aggregations": {
+            "order_id": "count_distinct"
+          },
+          "filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered"
+            },
+            {
+              "column": "order_delivered_customer_date",
+              "operator": "==",
+              "value": null
+            }
+          ],
+          "output_names": {
+            "order_id": "missing_delivered_date"
+          },
+          "ascending": true
+        },
+        "step_index": 3,
+        "completion_status": "complete"
+      },
+      {
+        "id": "missing_estimated_date_by_state",
+        "label": "Missing Estimated Date By State",
+        "result": {
+          "group_populations": [],
+          "analysis_kind": "aggregation",
+          "columns": [
+            "customer_state",
+            "missing_estimated_date"
+          ],
+          "data": [],
+          "row_count": 0,
+          "measure_provenance": {
+            "missing_estimated_date": {
+              "source_column": "order_id",
+              "operation": "count_distinct",
+              "role": "measure"
+            }
+          },
+          "units": {},
+          "source_observation_count": 0,
+          "result_scope": {
+            "full_group_count": 0,
+            "returned_row_count": 0,
+            "limit": null,
+            "sort_by": null,
+            "ascending": true
+          },
+          "transformation_audit": {
+            "fill_missing": {},
+            "transforms": [],
+            "output_names": {
+              "order_id": "missing_estimated_date"
+            }
+          },
+          "operation_evidence": {
+            "kind": "aggregation",
+            "parameters": {
+              "group_by": [
+                "customer_state"
+              ],
+              "aggregations": {
+                "order_id": "count_distinct"
+              },
+              "filters": [
+                {
+                  "column": "order_estimated_delivery_date",
+                  "operator": "==",
+                  "value": null
+                },
+                {
+                  "column": "order_status",
+                  "operator": "==",
+                  "value": "delivered"
+                }
+              ],
+              "output_names": {
+                "order_id": "missing_estimated_date"
+              },
+              "transforms": [],
+              "derived_measures": [],
+              "fill_missing": {},
+              "ascending": true
+            },
+            "result_sha256": "310b2036faec2d3310c46e42f1a479b7b39c764d9754a77661f8f93f86d40243"
+          }
+        },
+        "source": {
+          "tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ],
+          "join_keys": [
+            {
+              "from_table": "olist.db::orders",
+              "from_column": "customer_id",
+              "to_table": "olist.db::customers",
+              "to_column": "customer_id"
+            }
+          ]
+        },
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "customer_state"
+          ],
+          "aggregations": {
+            "order_id": "count_distinct"
+          },
+          "filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered"
+            },
+            {
+              "column": "order_estimated_delivery_date",
+              "operator": "==",
+              "value": null
+            }
+          ],
+          "output_names": {
+            "order_id": "missing_estimated_date"
+          },
+          "ascending": true
+        },
+        "step_index": 4,
+        "completion_status": "complete"
+      }
+    ],
+    "charts": [
+      {
+        "id": "chart-total_delivered_by_state",
+        "kind": "result",
+        "table_id": "total_delivered_by_state",
+        "specification": {}
+      },
+      {
+        "id": "chart-comparable_orders_by_state",
+        "kind": "result",
+        "table_id": "comparable_orders_by_state",
+        "specification": {}
+      },
+      {
+        "id": "chart-late_orders_by_state",
+        "kind": "result",
+        "table_id": "late_orders_by_state",
+        "specification": {}
+      },
+      {
+        "id": "chart-missing_delivered_date_by_state",
+        "kind": "result",
+        "table_id": "missing_delivered_date_by_state",
+        "specification": {}
+      }
+    ],
+    "facts": [
+      {
+        "table_id": "total_delivered_by_state",
+        "row_count": 27,
+        "units": {},
+        "source_observation_count": 96478,
+        "verification": null,
+        "comparison_audit": null,
+        "result_scope": {
+          "full_group_count": 27,
+          "returned_row_count": 27,
+          "limit": null,
+          "sort_by": null,
+          "ascending": true
+        },
+        "transformation_audit": {
+          "fill_missing": {},
+          "transforms": [],
+          "output_names": {
+            "order_id": "total_delivered_orders"
+          }
+        }
+      },
+      {
+        "table_id": "comparable_orders_by_state",
+        "row_count": 27,
+        "units": {},
+        "source_observation_count": 96470,
+        "verification": null,
+        "comparison_audit": null,
+        "result_scope": {
+          "full_group_count": 27,
+          "returned_row_count": 27,
+          "limit": null,
+          "sort_by": null,
+          "ascending": true
+        },
+        "transformation_audit": {
+          "fill_missing": {},
+          "transforms": [],
+          "output_names": {
+            "order_id": "comparable_orders"
+          }
+        }
+      },
+      {
+        "table_id": "late_orders_by_state",
+        "row_count": 27,
+        "units": {},
+        "source_observation_count": 6534,
+        "verification": null,
+        "comparison_audit": null,
+        "result_scope": {
+          "full_group_count": 27,
+          "returned_row_count": 27,
+          "limit": null,
+          "sort_by": "late_orders",
+          "ascending": false
+        },
+        "transformation_audit": {
+          "fill_missing": {},
+          "transforms": [],
+          "output_names": {
+            "order_id": "late_orders"
+          }
+        }
+      },
+      {
+        "table_id": "missing_delivered_date_by_state",
+        "row_count": 2,
+        "units": {},
+        "source_observation_count": 8,
+        "verification": null,
+        "comparison_audit": null,
+        "result_scope": {
+          "full_group_count": 2,
+          "returned_row_count": 2,
+          "limit": null,
+          "sort_by": null,
+          "ascending": true
+        },
+        "transformation_audit": {
+          "fill_missing": {},
+          "transforms": [],
+          "output_names": {
+            "order_id": "missing_delivered_date"
+          }
+        }
+      },
+      {
+        "table_id": "missing_estimated_date_by_state",
+        "row_count": 0,
+        "units": {},
+        "source_observation_count": 0,
+        "verification": null,
+        "comparison_audit": null,
+        "result_scope": {
+          "full_group_count": 0,
+          "returned_row_count": 0,
+          "limit": null,
+          "sort_by": null,
+          "ascending": true
+        },
+        "transformation_audit": {
+          "fill_missing": {},
+          "transforms": [],
+          "output_names": {
+            "order_id": "missing_estimated_date"
+          }
+        }
+      }
+    ],
+    "interpretation": [],
+    "provenance": {
+      "steps": [
+        {
+          "tool": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              }
+            ],
+            "output_names": {
+              "order_id": "total_delivered_orders"
+            },
+            "ascending": true
+          },
+          "status": "succeeded",
+          "output_id": "total_delivered_by_state",
+          "tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ],
+          "join_keys": [
+            {
+              "from_table": "olist.db::orders",
+              "from_column": "customer_id",
+              "to_table": "olist.db::customers",
+              "to_column": "customer_id"
+            }
+          ]
+        },
+        {
+          "tool": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": "!=",
+                "value": null
+              },
+              {
+                "column": "order_estimated_delivery_date",
+                "operator": "!=",
+                "value": null
+              }
+            ],
+            "output_names": {
+              "order_id": "comparable_orders"
+            },
+            "ascending": true
+          },
+          "status": "succeeded",
+          "output_id": "comparable_orders_by_state",
+          "tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ],
+          "join_keys": [
+            {
+              "from_table": "olist.db::orders",
+              "from_column": "customer_id",
+              "to_table": "olist.db::customers",
+              "to_column": "customer_id"
+            }
+          ]
+        },
+        {
+          "tool": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": ">",
+                "value_column": "order_estimated_delivery_date",
+                "value_type": "date",
+                "date_part": "date"
+              }
+            ],
+            "output_names": {
+              "order_id": "late_orders"
+            },
+            "sort_by": "late_orders",
+            "ascending": false
+          },
+          "status": "succeeded",
+          "output_id": "late_orders_by_state",
+          "tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ],
+          "join_keys": [
+            {
+              "from_table": "olist.db::orders",
+              "from_column": "customer_id",
+              "to_table": "olist.db::customers",
+              "to_column": "customer_id"
+            }
+          ]
+        },
+        {
+          "tool": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_delivered_customer_date",
+                "operator": "==",
+                "value": null
+              }
+            ],
+            "output_names": {
+              "order_id": "missing_delivered_date"
+            },
+            "ascending": true
+          },
+          "status": "succeeded",
+          "output_id": "missing_delivered_date_by_state",
+          "tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ],
+          "join_keys": [
+            {
+              "from_table": "olist.db::orders",
+              "from_column": "customer_id",
+              "to_table": "olist.db::customers",
+              "to_column": "customer_id"
+            }
+          ]
+        },
+        {
+          "tool": "aggregation",
+          "parameters": {
+            "group_by": [
+              "customer_state"
+            ],
+            "aggregations": {
+              "order_id": "count_distinct"
+            },
+            "filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered"
+              },
+              {
+                "column": "order_estimated_delivery_date",
+                "operator": "==",
+                "value": null
+              }
+            ],
+            "output_names": {
+              "order_id": "missing_estimated_date"
+            },
+            "ascending": true
+          },
+          "status": "succeeded",
+          "output_id": "missing_estimated_date_by_state",
+          "tables": [
+            "olist.db::orders",
+            "olist.db::customers"
+          ],
+          "join_keys": [
+            {
+              "from_table": "olist.db::orders",
+              "from_column": "customer_id",
+              "to_table": "olist.db::customers",
+              "to_column": "customer_id"
+            }
+          ]
+        }
+      ]
+    },
+    "chart_scope": {}
+  },
+  "calculation": {
+    "steps": [
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "customer_state"
+          ],
+          "aggregations": {
+            "order_id": "count_distinct"
+          },
+          "filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered"
+            }
+          ],
+          "output_names": {
+            "order_id": "total_delivered_orders"
+          },
+          "ascending": true
+        },
+        "status": "succeeded",
+        "output_id": "total_delivered_by_state",
+        "tables": [
+          "olist.db::orders",
+          "olist.db::customers"
+        ],
+        "join_keys": [
+          {
+            "from_table": "olist.db::orders",
+            "from_column": "customer_id",
+            "to_table": "olist.db::customers",
+            "to_column": "customer_id"
+          }
+        ]
+      },
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "customer_state"
+          ],
+          "aggregations": {
+            "order_id": "count_distinct"
+          },
+          "filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered"
+            },
+            {
+              "column": "order_delivered_customer_date",
+              "operator": "!=",
+              "value": null
+            },
+            {
+              "column": "order_estimated_delivery_date",
+              "operator": "!=",
+              "value": null
+            }
+          ],
+          "output_names": {
+            "order_id": "comparable_orders"
+          },
+          "ascending": true
+        },
+        "status": "succeeded",
+        "output_id": "comparable_orders_by_state",
+        "tables": [
+          "olist.db::orders",
+          "olist.db::customers"
+        ],
+        "join_keys": [
+          {
+            "from_table": "olist.db::orders",
+            "from_column": "customer_id",
+            "to_table": "olist.db::customers",
+            "to_column": "customer_id"
+          }
+        ]
+      },
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "customer_state"
+          ],
+          "aggregations": {
+            "order_id": "count_distinct"
+          },
+          "filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered"
+            },
+            {
+              "column": "order_delivered_customer_date",
+              "operator": ">",
+              "value_column": "order_estimated_delivery_date",
+              "value_type": "date",
+              "date_part": "date"
+            }
+          ],
+          "output_names": {
+            "order_id": "late_orders"
+          },
+          "sort_by": "late_orders",
+          "ascending": false
+        },
+        "status": "succeeded",
+        "output_id": "late_orders_by_state",
+        "tables": [
+          "olist.db::orders",
+          "olist.db::customers"
+        ],
+        "join_keys": [
+          {
+            "from_table": "olist.db::orders",
+            "from_column": "customer_id",
+            "to_table": "olist.db::customers",
+            "to_column": "customer_id"
+          }
+        ]
+      },
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "customer_state"
+          ],
+          "aggregations": {
+            "order_id": "count_distinct"
+          },
+          "filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered"
+            },
+            {
+              "column": "order_delivered_customer_date",
+              "operator": "==",
+              "value": null
+            }
+          ],
+          "output_names": {
+            "order_id": "missing_delivered_date"
+          },
+          "ascending": true
+        },
+        "status": "succeeded",
+        "output_id": "missing_delivered_date_by_state",
+        "tables": [
+          "olist.db::orders",
+          "olist.db::customers"
+        ],
+        "join_keys": [
+          {
+            "from_table": "olist.db::orders",
+            "from_column": "customer_id",
+            "to_table": "olist.db::customers",
+            "to_column": "customer_id"
+          }
+        ]
+      },
+      {
+        "tool": "aggregation",
+        "parameters": {
+          "group_by": [
+            "customer_state"
+          ],
+          "aggregations": {
+            "order_id": "count_distinct"
+          },
+          "filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered"
+            },
+            {
+              "column": "order_estimated_delivery_date",
+              "operator": "==",
+              "value": null
+            }
+          ],
+          "output_names": {
+            "order_id": "missing_estimated_date"
+          },
+          "ascending": true
+        },
+        "status": "succeeded",
+        "output_id": "missing_estimated_date_by_state",
+        "tables": [
+          "olist.db::orders",
+          "olist.db::customers"
+        ],
+        "join_keys": [
+          {
+            "from_table": "olist.db::orders",
+            "from_column": "customer_id",
+            "to_table": "olist.db::customers",
+            "to_column": "customer_id"
+          }
+        ]
+      }
+    ]
+  }
+}
