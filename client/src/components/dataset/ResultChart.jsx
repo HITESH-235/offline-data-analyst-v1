@@ -1,6 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { CHART_NAMES, inspectResult, rankRows, makeChart, unitFor, escapePlotText } from './charts/chartModel';
 import { loadPlotly } from './charts/plotly';
+import { useTheme } from '../../theme/ThemeContext';
+import { applyPlotTheme, readChartPalette } from '../../theme/chartTheme';
 
 function wrapLabel(text, length = 22) {
   const words = String(text).split(/\s+/), lines = [''];
@@ -15,7 +17,11 @@ function wrapLabel(text, length = 22) {
   return lines.map(escapePlotText).join('<br>');
 }
 function Plot({ chart, active, unit }) {
+  const { resolved } = useTheme();
   const host = useRef(null);
+  const redraw = useRef(null);
+  const view = useRef({ chart: null, revision: 0 });
+  if (view.current.chart !== chart) view.current = { chart, revision: view.current.revision + 1 };
   const [error, setError] = useState('');
   const [ready, setReady] = useState(false);
   const [focused, setFocused] = useState(0);
@@ -55,16 +61,19 @@ function Plot({ chart, active, unit }) {
           layout.yaxis.categoryarray = chart.traces[0].y;
           layout.yaxis.autorange = 'reversed';
         }
-        return Plotly.react(node, chart.traces, layout, { displayModeBar: false, responsive: false, scrollZoom: false, displaylogo: false });
+        const themed = applyPlotTheme({ data: chart.traces, layout }, readChartPalette(), { managed: true, revision: view.current.revision });
+        return Plotly.react(node, themed.data, themed.layout, { displayModeBar: false, responsive: false, scrollZoom: false, displaylogo: false });
       };
+      redraw.current = draw;
       await draw();
-      if (disposed) { Plotly.purge(node); return; }
+      if (disposed) return;
       setReady(true);
       observer = new ResizeObserver(() => { draw()?.catch(() => setError('Could not resize this chart. Table is still available.')); });
       observer.observe(node);
     }).catch(err => { if (!disposed) setError(err.message); });
-    return () => { disposed = true; observer?.disconnect(); };
+    return () => { disposed = true; observer?.disconnect(); redraw.current = null; };
   }, [chart, active, unit]);
+  useEffect(() => { redraw.current?.()?.catch(() => setError('Could not update chart appearance. Table is still available.')); }, [resolved]);
   useEffect(() => { const node = host.current; return () => { if (window.Plotly && node) window.Plotly.purge(node); }; }, []);
   return <>
     {error && <p role="alert">{error}</p>}
@@ -118,18 +127,17 @@ function ChartExplorer({ result, snapshot, active, model }) {
     <div className="result-chart-controls">
       <label>Chart type<select className="input-text" value={type} onChange={event => changeType(event.target.value)}>{model.types.map(value => <option key={value} value={value}>{CHART_NAMES[value]}</option>)}</select></label>
       {type !== 'heatmap' && <label>{type === 'line' ? 'Date / time' : type === 'histogram' ? 'Measure' : ['bar','box'].includes(type) ? 'Category' : 'X measure'}
-        <select className="input-text" value={x} onChange={event => { const nextX = event.target.value; const eligible = pairs.filter(pair => pair.x === nextX); setFields({ x: nextX, y: eligible.some(pair => pair.y === y) ? y : eligible.length === 1 ? eligible[0].y : '' }); }}>
+        <select className="input-text" title={x || "Choose a field"} value={x} onChange={event => { const nextX = event.target.value; const eligible = pairs.filter(pair => pair.x === nextX); setFields({ x: nextX, y: eligible.some(pair => pair.y === y) ? y : eligible.length === 1 ? eligible[0].y : '' }); }}>
           <option value="">Choose a field</option>{xs.map(value => <option key={value}>{value}</option>)}
         </select></label>}
-      {!['heatmap','histogram'].includes(type) && <label>{type === 'scatter' ? 'Y measure' : 'Numeric measure'}<select className="input-text" value={y} onChange={event => setFields({ x, y: event.target.value })}>
+      {!['heatmap','histogram'].includes(type) && <label>{type === 'scatter' ? 'Y measure' : 'Numeric measure'}<select className="input-text" title={y || "Choose a field"} value={y} onChange={event => setFields({ x, y: event.target.value })}>
         <option value="">Choose a field</option>{ys.map(value => <option key={value}>{value}</option>)}
       </select></label>}
       {type === 'bar' && <label>Show<select className="input-text" value={limit} onChange={event => setLimit(Number(event.target.value))}>{[5,10,20].map(n => <option key={n} value={n}>Top {n}</option>)}</select></label>}
     </div>
-    <p className="chart-reason">Default: {CHART_NAMES[model.preferred]}. {model.reason}{type !== model.preferred ? ` You selected ${CHART_NAMES[type].toLowerCase()}.` : ''}</p>
+    <details className="chart-guidance"><summary>Chart guidance</summary><p>Default: {CHART_NAMES[model.preferred]}. {model.reason}{type !== model.preferred ? ` You selected ${CHART_NAMES[type].toLowerCase()}.` : ''}</p></details>
     {!chart ? <p className="chart-notice">Several fields could fit. Choose the fields you want to compare.</p> : <>
       <h3 className="chart-title">{chart.title}</h3>
-      <p className="chart-source">Source: {snapshot.tables?.join(' · ') || 'Source unavailable'}</p>
       <Plot chart={chart} active={active} unit={unit === y || unit === x ? '' : unit} />
       {chart.omitted > 0 && <p className="chart-notice">{chart.omitted.toLocaleString()} rows without usable values in the selected fields were omitted.</p>}
       {type === 'bar' && <p className="chart-footnote">Ranked across the full result. Zero baseline; no categories combined.</p>}

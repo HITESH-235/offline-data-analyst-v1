@@ -4,7 +4,36 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>client</title>
+    <title>Offline AI Data Analyst</title>
+    <style>html{background:#F2F4F7}html[data-theme="dark"]{background:#000000}</style>
+    <script id="theme-init">
+/* Resolve once before paint. Legacy System and missing choices become fixed modes. */
+(() => {
+  const key = 'analyst-theme';
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  const resolve = value => ['light', 'dark'].includes(value) ? value : (media.matches ? 'dark' : 'light');
+  const read = () => { try { return window.localStorage.getItem(key); } catch { return null; } };
+  let state;
+  const listeners = new Set();
+  function apply(value) {
+    const resolved = resolve(value);
+    document.documentElement.dataset.theme = resolved;
+    document.documentElement.dataset.themePreference = resolved;
+    document.documentElement.style.colorScheme = resolved;
+    try { window.localStorage.setItem(key, resolved); } catch { /* Session choice still works. */ }
+    if (state?.resolved === resolved) return;
+    state = Object.freeze({ preference: resolved, resolved });
+    listeners.forEach(listener => listener());
+  }
+  apply(read());
+  window.addEventListener('storage', event => { if (event.key === key || event.key === null) apply(read()); });
+  window.analystTheme = Object.freeze({
+    getSnapshot: () => state,
+    subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener); },
+    setPreference: apply,
+  });
+})();
+    </script>
   </head>
   <body>
     <div id="root"></div>

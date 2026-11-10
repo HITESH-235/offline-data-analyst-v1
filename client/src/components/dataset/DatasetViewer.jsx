@@ -1,18 +1,15 @@
 import SavedAnalyses from "./SavedAnalyses";
 import ResultWorkspace from "./ResultWorkspace";
 import { useProject } from "../../context/ProjectContext";
-import { Table, BarChart2, Hash, AlertTriangle, List, ArrowLeft } from "lucide-react";
+import { Table, BarChart2, Hash, AlertTriangle, List, ArrowLeft , CircleCheck } from "lucide-react";
 
 export const DatasetViewer = ({ datasetName, activeTab, setActiveTab, selectedResult, onOpenResult }) => {
   const { activeDatasetPreview, activeDatasetProfile, isLoading } = useProject();
   return (
-    <div className="dataset-workspace">
+    <div className={`dataset-workspace view-${activeTab}`}>
       <header className="workspace-heading">
         <span className="eyebrow">Analysis workspace</span>
         <h1>{{ preview: "Data Preview", profile: "Data Profiling", result: "Result", saved: "Saved Analyses" }[activeTab]}</h1>
-        {activeTab === "result" && (
-          <p className="source-context"><strong>Result source</strong> {selectedResult?.tables?.join(" · ") || "Unavailable"}</p>
-        )}
         <p className="browse-context"><strong>{(activeTab === "result" || activeTab === "saved") ? "Browsing dataset" : "Dataset"}</strong> {datasetName}</p>
       </header>
       {activeTab === "result" && selectedResult?.fromLibrary && <button className="btn library-back" onClick={() => setActiveTab("saved")}><ArrowLeft size={14} />Back to Saved Analyses</button>}
@@ -126,8 +123,8 @@ export const DatasetViewer = ({ datasetName, activeTab, setActiveTab, selectedRe
                         <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                           <Hash size={12} /> Uniques: {uniques}
                         </span>
-                        <span style={{ display: "flex", alignItems: "center", gap: "4px", color: missing > 0 ? "var(--warning-color)" : "var(--text-secondary)" }}>
-                          <AlertTriangle size={12} /> Missing: {missing}
+                        <span style={{ display: "flex", alignItems: "center", gap: "4px", color: missing > 0 ? "var(--warning-color)" : "var(--success-color)" }}>
+                          {missing > 0 ? <AlertTriangle size={12} /> : <CircleCheck size={12} />} Missing: {missing}
                         </span>
                       </div>
                     </div>

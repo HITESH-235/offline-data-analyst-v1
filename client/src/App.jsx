@@ -3,6 +3,7 @@ import Sidebar from "./components/layout/Sidebar";
 import DatasetViewer from "./components/dataset/DatasetViewer";
 import ChatPanel from "./components/chat/ChatPanel";
 import { useProject } from "./context/ProjectContext";
+import { ThemeControl } from './theme/ThemeContext';
 import {
   Terminal,
   PanelLeftClose,
@@ -150,13 +151,14 @@ function App() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: "20px", alignItems: "center", fontSize: "13px" }}>
-          <div>
+        <div className="header-actions">
+          <div className="header-project">
             <span style={{ color: "var(--text-muted)", marginRight: "6px" }}>Active Project:</span>
             <span style={{ fontWeight: "600", color: "var(--text-primary)" }}>
               {activeProjectName || "None"}
             </span>
           </div>
+          <ThemeControl />
 
           <button
             className="btn btn-secondary icon-only-btn desktop-panel-toggle"

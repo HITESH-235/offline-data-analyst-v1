@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { loadPlotly } from './charts/plotly';
 import { prepareGeneratedFigure } from './charts/generatedFigure';
+import { useTheme } from '../../theme/ThemeContext';
+import { applyPlotTheme, readChartPalette } from '../../theme/chartTheme';
 const base = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
 function artifactUrl(path) {
   if (typeof path !== 'string' || !path.startsWith('/projects/') || path.includes('..')) return undefined;
   return base + path;
 }
 function Figure({ artifact, active }) {
+  const { resolved } = useTheme();
+  const redraw = useRef(null);
   const viewport = useRef(null), host = useRef(null);
   const [figure, setFigure] = useState(null), [error,setError] = useState(''), [note,setNote] = useState('');
   const [ready,setReady] = useState(false);
@@ -20,30 +24,33 @@ function Figure({ artifact, active }) {
   },[artifact]);
   useEffect(() => {
     if (!active || !figure) return;
-    let disposed = false, observer, frame, lastWidth;
+    let disposed = false, observer, frame, lastWidth, framesAdded = false;
     const node = host.current, container = viewport.current;
     loadPlotly().then(async Plotly => {
       if (disposed) return;
       const known = Plotly.PlotSchema.get().traces;
       if (figure.data.some(trace => !known[trace.type || 'scatter'])) throw Error('This chart type is not supported by the local renderer.');
-      const draw = async () => {
-        if (disposed || !container.clientWidth || container.clientWidth === lastWidth) return;
+      const draw = async (force = false) => {
+        if (disposed || !container.clientWidth || !force && container.clientWidth === lastWidth) return;
         lastWidth = container.clientWidth;
         const prepared = prepareGeneratedFigure(figure,lastWidth);
         setNote(prepared.note);
-        await Plotly.react(node,prepared.data,prepared.layout,{ displaylogo:false, responsive:false, scrollZoom:false,
+        const themed = applyPlotTheme(prepared, readChartPalette(), { revision: artifact.id, sourceLayout: figure.layout });
+        await Plotly.react(node,themed.data,themed.layout,{ displaylogo:false, responsive:false, scrollZoom:false,
           toImageButtonOptions:{format:'png',scale:2}, modeBarButtonsToRemove:['lasso2d','select2d'] });
         if (disposed) return;
-        if (prepared.frames.length) await Plotly.addFrames(node,prepared.frames);
+        if (prepared.frames.length && !framesAdded) { await Plotly.addFrames(node,prepared.frames); framesAdded = true; }
         setReady(true);
       };
+      redraw.current = draw;
       await draw();
       if (disposed) return;
       observer = new ResizeObserver(() => { cancelAnimationFrame(frame);frame=requestAnimationFrame(() => draw().catch(err=>setError(err.message))); });
       observer.observe(container);
     }).catch(err=>{if(!disposed)setError(err.message);});
-    return () => { disposed=true;observer?.disconnect();cancelAnimationFrame(frame); };
+    return () => { disposed=true;observer?.disconnect();cancelAnimationFrame(frame);redraw.current=null; };
   },[active,figure]);
+  useEffect(()=>{redraw.current?.(true)?.catch(err=>setError(err.message));},[resolved]);
   useEffect(()=>{const node=host.current;return()=>window.Plotly?.purge(node);},[]);
   return <>
     {error ? <p role="alert" className="chart-notice">{error} {artifact.download_url ? "Try the standalone download below." : "No standalone download was captured."}</p> : !ready && <p role="status">Loading generated figure…</p>}

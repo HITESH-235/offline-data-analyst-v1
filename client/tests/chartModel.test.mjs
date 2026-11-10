@@ -135,3 +135,9 @@ test('BRL chart bars, labels and hover use transformed saved values without divi
  assert.deepEqual(chart.traces[0].x,result.data.map(r=>r['Payments (BRL)']));
  assert.ok(chart.details[0].includes('12,542,084.19'));assert.equal(chart.yLabel,'payment_type');
 });
+
+test('a distinct-count ID is a measure while raw IDs remain excluded',()=>{
+ const result={analysis_kind:'aggregation',columns:['Country','CustomerID'],data:[{Country:'A',CustomerID:3},{Country:'B',CustomerID:2}],measure_provenance:{CustomerID:{source_column:'CustomerID',operation:'count_distinct',role:'measure'}}};
+ const model=inspectResult(result);assert.deepEqual(model.numbers,['CustomerID']);assert.equal(model.preferred,'bar');
+ const raw=inspectResult({...result,analysis_kind:undefined,measure_provenance:{}});assert.ok(raw.ids.includes('CustomerID'));
+});

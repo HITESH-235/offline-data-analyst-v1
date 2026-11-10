@@ -35,7 +35,7 @@ export function inspectResult(result, calculation, question = '', meaning = '') 
   for (const column of columns) {
     const values = data.map(row => row[column]).filter(present);
     const declared = String(result?.data_types?.[column] ?? result?.column_types?.[column] ?? '').toLowerCase();
-    const counted = result?.measure_provenance?.[column]?.operation === 'count' || steps.some(step => step.tool === 'aggregation' && step.parameters?.aggregations?.[column] === 'count');
+    const counted = ['count','count_distinct'].includes(result?.measure_provenance?.[column]?.operation) || steps.some(step => step.tool === 'aggregation' && ['count','count_distinct'].includes(step.parameters?.aggregations?.[column]));
     if (!counted && (isIdentifier(column) || /identifier|primary.?key/.test(declared))) { ids.push(column); continue; }
     if (!values.length) continue;
     if (/date|time/.test(declared)) {
@@ -134,12 +134,13 @@ export function makeChart(model, type, x, y, ranking, limit = 10) {
   let traces = [], details = [], title = '', xLabel = x, yLabel = y, omitted = 0;
   if (type === 'bar') {
     const rows = ranking.slice(0, limit);
-    details = rows.map(row => `${row.label}: ${formatValue(row.value)}`);
+    const percentage = model.units?.[y] === '%';
+    details = rows.map(row => `${row.label}: ${percentage ? row.value.toFixed(6) + '%' : formatValue(row.value)}`);
     title = `Top ${rows.length} ${x} by ${y}`;
     xLabel = y; yLabel = x;
     traces = [{ ...base, type: 'bar', orientation: 'h', x: rows.map(row => row.value), y: rows.map((_, i) => i),
-      text: rows.map(row => formatValue(row.value)), textposition: rows.map(row => row.value === 0 ? 'outside' : 'auto'), cliponaxis: false, outsidetextfont: { color: '#14212B' }, customdata: rows.map(row => escape(row.label)),
-      hovertemplate: model.units?.[y] ? `%{customdata}<br>%{x:,.2f} ${escape(model.units[y])}<extra></extra>` : '%{customdata}<br>%{x:,}<extra></extra>' }];
+      text: rows.map(row => percentage ? row.value.toFixed(2) + '%' : formatValue(row.value)), textposition: rows.map(row => row.value === 0 ? 'outside' : 'auto'), cliponaxis: false, outsidetextfont: { color: '#14212B' }, customdata: rows.map(row => escape(row.label)),
+      hovertemplate: percentage ? '%{customdata}<br>%{x:.6f}%<extra></extra>' : model.units?.[y] ? `%{customdata}<br>%{x:,.2f} ${escape(model.units[y])}<extra></extra>` : '%{customdata}<br>%{x:,}<extra></extra>' }];
     omitted = model.data.length - model.data.filter(row => present(row[x]) && Number.isFinite(row[y])).length;
     return { traces, details, title, xLabel, yLabel, omitted, rows, type };
   }

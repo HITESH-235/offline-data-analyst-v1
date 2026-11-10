@@ -1,26 +1,18 @@
 import { useMemo, useState } from "react";
 
+import { displayValue, sortResultRows } from "./tableValues";
+
 const PAGE_SIZE = 10;
 
-function displayValue(value) {
-  if (value == null) return "";
-  return typeof value === "object" ? JSON.stringify(value) : String(value);
-}
-
-function compareValues(left, right) {
-  if (typeof left === "number" && typeof right === "number") return left - right;
-  return displayValue(left).localeCompare(displayValue(right), undefined, { numeric: true });
-}
-
 export default function ResultTable({ result }) {
-  const [sort, setSort] = useState(null);
+  const [sort, setSort] = useState(() => result?.columns?.includes(result?.result_scope?.sort_by)
+    ? { column: result.result_scope.sort_by, direction: result.result_scope.ascending ? 1 : -1 }
+    : null);
   const [page, setPage] = useState(0);
   const columns = result?.columns;
   const rows = result?.data;
 
-  const sortedRows = useMemo(() => sort
-    ? [...rows].sort((a, b) => sort.direction * compareValues(a[sort.column], b[sort.column]))
-    : rows, [rows, sort]);
+  const sortedRows = useMemo(() => sortResultRows(rows, sort), [rows, sort]);
 
   if (!Array.isArray(columns) || !columns.length || !Array.isArray(rows)) return null;
 
@@ -59,7 +51,7 @@ export default function ResultTable({ result }) {
               <tr key={start + index}>
                 {columns.map((column) => {
                   const raw = row[column];
-                  const value = result.analysis_kind === 'correlation' && typeof raw === 'number' ? raw.toFixed(4) : result.units?.[column] === 'BRL' && typeof raw === 'number' ? raw.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : displayValue(raw);
+                  const value = result.units?.[column] === '%' && typeof raw === 'number' ? raw.toFixed(6) : result.analysis_kind === 'correlation' && typeof raw === 'number' ? raw.toFixed(4) : result.units?.[column] === 'BRL' && typeof raw === 'number' ? raw.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : displayValue(raw);
                   return <td key={column} className={numericColumns.includes(column) ? "numeric" : undefined} title={displayValue(raw)}>{value}</td>;
                 })}
               </tr>

@@ -1,5 +1,7 @@
 import React, { createContext, useState, useEffect, useContext, useRef } from "react";
 
+import { requestWatchdog } from "./requestWatchdog.js";
+
 const ProjectContext = createContext(null);
 
 const BACKEND_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
@@ -199,19 +201,23 @@ export const ProjectProvider = ({ children }) => {
       { id: pendingId, role: "assistant", pending: true, startedAt, datasetId: dsId, datasetName, stage: "connecting" },
     ]);
 
+    const watchdog = requestWatchdog((Number(import.meta.env.VITE_CHAT_REQUEST_TIMEOUT_SECONDS) || 135) * 1000);
     try {
-      const response = await fetch(`${BACKEND_URL}/chat/message/stream`, {
+      const response = await watchdog.wait(fetch(`${BACKEND_URL}/chat/message/stream`, {
+        signal: watchdog.signal,
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: projId, dataset_id: dsId, message: msg }),
-      });
+      }));
+      const serverBudget = Number(response.headers.get("X-Request-Timeout-Seconds"));
+      if (serverBudget > 0) watchdog.setBudget((serverBudget + 5) * 1000);
       if (!response.ok || !response.body) throw new Error("Could not start the analysis.");
 
       let buffer = "";
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
       try {
         while (true) {
-          const { value, done } = await reader.read();
+          const { value, done } = await watchdog.wait(reader.read());
           if (done) throw new Error("The connection closed before the analyst finished.");
           buffer += value;
           const lines = buffer.split("\n");
@@ -219,7 +225,7 @@ export const ProjectProvider = ({ children }) => {
           for (const line of lines) {
             if (!line.trim()) continue;
             const event = JSON.parse(line);
-            if (event.stage === "completed" || event.stage === "failed" || event.stage === "incomplete") {
+            if (event.stage === "unsupported" || event.stage === "completed" || event.stage === "failed" || event.stage === "incomplete" || event.stage === "clarification" || event.stage === "timed_out" || event.stage === "cancelled") {
               const result = event.result ?? {};
               updateReply({
                 ...result,
@@ -236,11 +242,12 @@ export const ProjectProvider = ({ children }) => {
           }
         }
       } finally {
-        await reader.cancel();
+        reader.cancel().catch(() => {});
       }
     } catch (error) {
-      updateReply({ pending: false, stage: "failed", content: error.message, elapsedMs: performance.now() - startedAt });
+      updateReply({ pending: false, stage: watchdog.expired ? "timed_out" : "failed", content: error.message, elapsedMs: performance.now() - startedAt });
     } finally {
+      watchdog.dispose();
       pendingProjects.current.delete(projId);
     }
   };

@@ -4,18 +4,10 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import CalculationDetails from "./CalculationDetails";
 import { useProject } from "../../context/ProjectContext";
-import { Send, Bot, User, ArrowUpRight } from "lucide-react";
+import { Send, Bot, User, Table2, ArrowUpRight, CircleCheck, CircleX, TriangleAlert, LoaderCircle } from "lucide-react";
 
-const STAGES = {
-  connecting: "Connecting to the analyst",
-  classifying: "Reading the question",
-  selecting_tables: "Selecting tables",
-  running_tool: "Running analysis",
-  preparing_answer: "Preparing the answer",
-  completed: "Completed",
-  failed: "Failed",
-  incomplete: "Incomplete",
-};
+import { chatPresentation, chatContent } from "./resultPresentation";
+import { progressState, STAGES } from "./progressState";
 
 function ChatProgress({ message }) {
   const [now, setNow] = useState(() => performance.now());
@@ -24,11 +16,14 @@ function ChatProgress({ message }) {
     const timer = setInterval(() => setNow(performance.now()), 250);
     return () => clearInterval(timer);
   }, [message.pending]);
-  const elapsed = message.elapsedMs ?? Math.max(0, now - message.startedAt);
+  const { stage, elapsed, pending } = progressState(message, now);
+  const StatusIcon = stage === 'completed' ? CircleCheck : ['failed', 'timed_out', 'cancelled'].includes(stage) ? CircleX
+    : ['incomplete', 'clarification', 'unsupported'].includes(stage) ? TriangleAlert : LoaderCircle;
   return (
-    <div className="chat-progress">
-      <span role="status" title={message.datasetName}>{STAGES[message.stage]} · {message.datasetName}</span>
-      <span className="elapsed">{(elapsed / 1000).toFixed(1)} s</span>
+    <div className="chat-progress" data-stage={stage} data-pending={pending} aria-busy={pending}>
+      <StatusIcon size={14} aria-hidden="true" />
+      <span role="status" title={message.datasetName}>{STAGES[stage] ?? 'Working'}{message.datasetName ? ` · ${message.datasetName}` : ''}</span>
+      {Number.isFinite(elapsed) && <span className="elapsed">{(elapsed / 1000).toFixed(1)} s</span>}
     </div>
   );
 }
@@ -106,7 +101,7 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
       </div>
 
       {/* Message Feed list */}
-      <div style={{ flex: 1, padding: "16px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "16px" }}>
+      <div className="chat-feed" style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
         {showPast && <div className="past-chat-status"><p>Saved conversation · {visibleHistory.length} messages loaded</p>{loadingPast && <p role="status">Loading past chats…</p>}{pastError && <p role="alert">{pastError}</p>}{past?.has_more && <button className="btn btn-secondary" disabled={loadingPast} onClick={older}>Load older messages</button>}</div>}
         {showPast && !visibleHistory.length ? <p>{loadingPast ? "" : "No saved messages for this project."}</p> : visibleHistory.length === 0 ? (
           <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", height: "100%", flexDirection: "column", color: "var(--text-muted)", fontSize: "13px", gap: "8px" }}>
@@ -152,7 +147,7 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
             const hasResult = !narrativeStatistics && Array.isArray(result?.data) && result?.columns?.length > 0;
             const artifacts = msg.artifacts ?? meta.artifacts ?? [];
             const sourceStep = artifacts.length ? calculation?.steps?.findLast(step => step.status === 'succeeded') : resultStep;
-            const canOpen = hasResult || artifacts.length > 0;
+            const canOpen = chatPresentation(analysisPackage, result, resultStep, artifacts, msg.scalar_answer ?? meta.scalar_answer).hasDetail && (hasResult || artifacts.length > 0);
             const tables = calculationSources(analysisPackage,sourceStep?.tables ?? (msg.datasetId ? [msg.datasetId] : []));
 
             return (
@@ -196,11 +191,11 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
                   }}
                 >
                   <div className="message-author">{isUser ? "You" : "Analyst"}{showPast && msg.created_at && <time className="past-message-time" dateTime={msg.created_at}>{new Date(msg.created_at).toLocaleString()}</time>}</div>
-                  {msg.stage && <ChatProgress message={msg} />}
+                  {!isUser && progressState({ ...msg, metadata: meta }).stage && <ChatProgress message={{ ...msg, metadata: meta }} />}
 
                   {/* Message body text with Markdown formatting */}
                   <div className="markdown-content">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content ?? ""}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{chatContent(msg.content ?? "", canOpen)}</ReactMarkdown>
                   </div>
 
                   {canOpen && (
@@ -209,14 +204,20 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
                       className="btn btn-secondary chat-result-card"
                       onClick={() => onOpenResult({ id: msg.savedMessageId ?? msg.id, result, artifacts, tables, calculation, analysisPackage, question: msg.question ?? meta.question })}
                     >
-                      <strong>{analysisPackage && analysisPackage.status !== "complete" ? "Open incomplete result" : "Open result"} <ArrowUpRight size={15} aria-hidden="true" /></strong>
-                      <span>{tables.join(" · ") || "Source unavailable"}</span>
-                      <span>{result?.analysis_kind === 'correlation' ? `${result.row_count} × ${result.row_count} matrix · Heatmap` : hasResult ? `${result.data.length.toLocaleString()} rows` : `${artifacts.length} generated chart${artifacts.length === 1 ? "" : "s"}`}</span>
+                      <Table2 className="result-link-icon" size={16} aria-hidden="true" />
+                      <span className="result-link-copy">
+                        <span className="result-link-label">{analysisPackage && analysisPackage.status !== "complete" ? "Open incomplete result" : "Open result"}</span>
+                        <span className="result-link-meta">
+                          <span className="result-link-source" title={tables.join(" · ") || "Source unavailable"}>{tables.join(" · ") || "Source unavailable"}</span>
+                          <span className="result-link-count">{result?.analysis_kind === 'correlation' ? `${result.row_count} × ${result.row_count} matrix · Heatmap` : hasResult ? `${result.data.length.toLocaleString()} rows` : `${artifacts.length} generated chart${artifacts.length === 1 ? "" : "s"}`}</span>
+                        </span>
+                      </span>
+                      <ArrowUpRight size={15} aria-hidden="true" />
                     </button>
                   )}
 
                   {(msg.analysis_deleted || meta.analysis_deleted) && <p className="chart-footnote">This analysis was deleted.</p>}
-                  {!canOpen && <CalculationDetails calculation={calculation} />}
+                  {!isUser && <CalculationDetails calculation={calculation} analysisPackage={analysisPackage} />}
 
                   {meta.chart_base64 && !artifacts.length && <p className="chart-footnote">This older chart has no typed artifact and cannot be safely previewed. Generate it again to open it in Result.</p>}
                 </div>

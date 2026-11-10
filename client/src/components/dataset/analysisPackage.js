@@ -12,5 +12,12 @@ export function calculationSources(pack, fallback = []) {
 }
 
 export function chartsForOutput(pack, outputId) {
+  if (!chartControlsAvailable(pack)) return [];
   return (pack?.charts || []).filter(chart => chart.kind === 'result' && chart.table_id === outputId);
 }
+
+export function chartPreference(pack) {
+  const scope = pack?.chart_scope || {};
+  return scope.preference || (scope.required ? 'required' : 'automatic');
+}
+export function chartControlsAvailable(pack) { return chartPreference(pack) !== 'disabled'; }
