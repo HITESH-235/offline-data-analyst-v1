@@ -46,7 +46,7 @@ class NullableContractTest(unittest.TestCase):
         self.assertEqual(normalized['outputs'][0]['group_by'],[])
         self.assertEqual(normalized['outputs'][0]['scope'],{'mode':'all'})
         self.assertIs(normalized['outputs'][0]['ascending'],False)
-        self.assertIs(normalized['chart_scope']['required'],False)
+        self.assertEqual(normalized['chart_scope']['preference'],'automatic')
     def test_literal_null_predicates_and_opaque_data_are_preserved(self):
         predicate={'column':'status','operator':'==','value':None,'value_column':None,'value_type':None,'date_part':None}
         p={'column':'actual','value_column':'target','operator':'>','group_by':['region'],'sort_by':'percentage',

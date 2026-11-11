@@ -1,0 +1,124 @@
+{
+  "reference": "bc118277-8d9f-427c-8842-88887e98b506",
+  "draft": {
+    "intent": "SIMPLE",
+    "context_action": "inherit",
+    "reference_message_id": "bc118277-8d9f-427c-8842-88887e98b506",
+    "clarification": null,
+    "unsupported_reason": null,
+    "reasoning": null,
+    "analysis_plan": {
+      "source": {
+        "tables": [
+          "olist.db::orders"
+        ],
+        "join_keys": []
+      },
+      "outputs": [
+        {
+          "reference_output_id": "delivered_orders_2018",
+          "kind": "comparison_summary",
+          "parameters": {
+            "column": "order_delivered_customer_date",
+            "value_column": "order_estimated_delivery_date",
+            "operator": ">",
+            "value_type": "date",
+            "date_part": "date",
+            "matched_label": "Late Orders",
+            "count_label": "Comparable Orders",
+            "comparison_label": "Estimated Delivery",
+            "eligibility_filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered",
+                "value_type": "string"
+              },
+              {
+                "column": "order_purchase_timestamp",
+                "operator": ">=",
+                "value": "2018-01-01",
+                "value_type": "date",
+                "date_part": "date"
+              },
+              {
+                "column": "order_purchase_timestamp",
+                "operator": "<",
+                "value": "2019-01-01",
+                "value_type": "date",
+                "date_part": "date"
+              }
+            ]
+          },
+          "source": null
+        }
+      ],
+      "chart_scope": {
+        "preference": "disabled",
+        "top_n": 10
+      },
+      "presentation": {
+        "table_in_chat": false,
+        "table_requested": false
+      }
+    },
+    "changed_fields": null
+  },
+  "baseline": {
+    "source": {
+      "tables": [
+        "olist.db::orders"
+      ],
+      "join_keys": []
+    },
+    "outputs": [
+      {
+        "id": "delivered_orders_2018",
+        "kind": "aggregation",
+        "parameters": {
+          "measures": [
+            {
+              "id": "delivered_order_count_2018",
+              "column": "order_id",
+              "operation": "count",
+              "label": "Delivered Orders in 2018"
+            }
+          ],
+          "group_by": [],
+          "filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered",
+              "value_type": "string"
+            },
+            {
+              "column": "order_purchase_timestamp",
+              "operator": ">=",
+              "value": "2018-01-01",
+              "value_type": "date",
+              "date_part": "date"
+            },
+            {
+              "column": "order_purchase_timestamp",
+              "operator": "<",
+              "value": "2019-01-01",
+              "value_type": "date",
+              "date_part": "date"
+            }
+          ],
+          "ascending": true
+        },
+        "source": null
+      }
+    ],
+    "chart_scope": {
+      "preference": "disabled",
+      "top_n": 10
+    },
+    "presentation": {
+      "table_in_chat": false,
+      "table_requested": false
+    }
+  }
+}

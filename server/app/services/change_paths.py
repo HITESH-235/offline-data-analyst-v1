@@ -10,7 +10,8 @@ def instructions():
             +', '.join(sections)+', outputs.<stable output id>.source, outputs.<stable output id>.parameters. '
             'Descendants must exist in the typed schema; list indices are zero-based and must exist before or after the change. '
             'Parameter aliases declared in the operation schema resolve to their canonical field only when unique. Indices address the stored baseline; reordered predicates must have an unambiguous structural match. '
-            'Optional typed fields (such as limit) may be added or removed. Output ids and kinds are immutable. '
+            'Optional typed fields (such as limit) may be added or removed. Output ids are immutable. '
+            'To change an output operation, declare BOTH outputs.<id>.kind and outputs.<id>.parameters, supplying complete parameters for the new kind and preserving the requested population and other constraints. '
             'Parameter-only shorthand is allowed only for a single unambiguous output. '
             'Changing source affects inherited sources only. Table limits, chart scope and chat presentation have independent permissions.')
 
@@ -64,6 +65,10 @@ def permissions(plan,changed_fields,prior=None,*,check_indices=True,expand_sourc
     before=prior or plan
     from app.services.output_identity import index_outputs
     old=index_outputs(before['outputs']);new=index_outputs(plan['outputs'])
+    if prior is not None:
+        for key in old.keys()&new.keys():
+            if old[key]['kind']!=new[key]['kind'] and not {f'outputs.{key}.kind',f'outputs.{key}.parameters'}<=set(changed_fields):
+                raise ContractError('$.changed_fields','changing operation kind requires explicit kind and whole parameters change paths for outputs.'+key)
     permitted=[]
     for i,path in enumerate(changed_fields):
         where=f'$.changed_fields[{i}]'
@@ -86,14 +91,19 @@ def permissions(plan,changed_fields,prior=None,*,check_indices=True,expand_sourc
             key=next(iter(new));tokens=['outputs',key,'parameters',*tokens]
         if len(tokens)<3 or tokens[1] not in old or tokens[1] not in new:raise ContractError(where,'unknown or ambiguous output in '+path)
         key=tokens[1];section=tokens[2]
-        if old[key]['kind']!=new[key]['kind']:raise ContractError(where,'operation kinds cannot change in a follow-up')
+        if section=='kind' and len(tokens)==3:
+            if f'outputs.{key}.parameters' not in changed_fields:
+                raise ContractError(where,'a kind change must declare the whole parameters replacement')
+            permitted.append('.'.join(tokens));continue
+        if old[key]['kind']!=new[key]['kind'] and not {f'outputs.{key}.kind',f'outputs.{key}.parameters'}<=set(changed_fields):
+            raise ContractError(where,'changing operation kind requires explicit kind and whole parameters change paths')
         if section=='parameters':model=REGISTRY[new[key]['kind']]
         elif section in PlannedOutput.model_fields and section not in {'id','kind'}:
             # source is an optional typed model, recovered from its non-null union.
             import typing
             annotation=PlannedOutput.model_fields[section].annotation
             model=next((t for t in typing.get_args(annotation) if hasattr(t,'model_json_schema')),annotation)
-        else:raise ContractError(where,'output identities/kinds are immutable; use a typed source or parameters path')
+        else:raise ContractError(where,'output identities are immutable; use a typed source, kind or parameters path')
         values=[old[key].get(section),new[key].get(section)]
         if section=='parameters':
             from app.analysis.operations import validate

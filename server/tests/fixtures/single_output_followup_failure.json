@@ -1,0 +1,124 @@
+{
+  "baseline": {
+    "source": {
+      "tables": [
+        "olist.db::orders"
+      ],
+      "join_keys": []
+    },
+    "outputs": [
+      {
+        "id": "delivered_orders_2018",
+        "kind": "aggregation",
+        "parameters": {
+          "measures": [
+            {
+              "id": "delivered_order_count",
+              "column": "order_id",
+              "operation": "count",
+              "label": "Delivered orders purchased in 2018"
+            }
+          ],
+          "group_by": [],
+          "filters": [
+            {
+              "column": "order_status",
+              "operator": "==",
+              "value": "delivered",
+              "value_type": "string"
+            },
+            {
+              "column": "order_purchase_timestamp",
+              "operator": ">=",
+              "value": "2018-01-01",
+              "value_type": "date",
+              "date_part": "date"
+            },
+            {
+              "column": "order_purchase_timestamp",
+              "operator": "<=",
+              "value": "2018-12-31",
+              "value_type": "date",
+              "date_part": "date"
+            }
+          ],
+          "fill_missing": {},
+          "ascending": true
+        },
+        "source": null
+      }
+    ],
+    "chart_scope": {
+      "preference": "disabled",
+      "top_n": 10
+    },
+    "presentation": {}
+  },
+  "reference": "72ff461a-3cb0-4c79-aef4-9df42f360b3b",
+  "draft": {
+    "intent": "SIMPLE",
+    "context_action": "inherit",
+    "reference_message_id": "72ff461a-3cb0-4c79-aef4-9df42f360b3b",
+    "clarification": null,
+    "unsupported_reason": null,
+    "reasoning": "Inherits the delivered orders purchased during 2018 population from message 72ff461a..., carrying forward order_status == delivered and the 2018 purchase-date boundaries into eligibility_filters. The new comparison_summary compares order_delivered_customer_date against order_estimated_delivery_date; actual later than estimated is late, same-day is on time. It returns one table with comparable orders, late orders, percentage, and missing-date counts, with charts disabled.",
+    "analysis_plan": {
+      "source": {
+        "tables": [
+          "olist.db::orders"
+        ],
+        "join_keys": []
+      },
+      "outputs": [
+        {
+          "id": "late_delivery_percentage",
+          "kind": "comparison_summary",
+          "parameters": {
+            "column": "order_delivered_customer_date",
+            "value_column": "order_estimated_delivery_date",
+            "operator": ">",
+            "value_type": "date",
+            "date_part": "date",
+            "matched_label": "Late orders",
+            "eligibility_filters": [
+              {
+                "column": "order_status",
+                "operator": "==",
+                "value": "delivered",
+                "value_type": "string"
+              },
+              {
+                "column": "order_purchase_timestamp",
+                "operator": ">=",
+                "value": "2018-01-01",
+                "value_type": "date",
+                "date_part": "date"
+              },
+              {
+                "column": "order_purchase_timestamp",
+                "operator": "<=",
+                "value": "2018-12-31",
+                "value_type": "date",
+                "date_part": "date"
+              }
+            ],
+            "sort_by": "percentage",
+            "ascending": false,
+            "count_label": "Comparable orders",
+            "comparison_label": "Estimated delivery"
+          },
+          "source": null
+        }
+      ],
+      "chart_scope": {
+        "preference": "disabled",
+        "top_n": 10
+      },
+      "presentation": {
+        "table_in_chat": false,
+        "table_requested": false
+      }
+    },
+    "changed_fields": null
+  }
+}

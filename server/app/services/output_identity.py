@@ -16,9 +16,23 @@ def index_outputs(outputs,where='$.analysis_plan.outputs'):
     return indexed
 
 
+def planner_history(history):
+    """Expose short request-local handles; canonical storage keeps real ids."""
+    result=copy.deepcopy(history)
+    for i,entry in enumerate(result.get('recent_successes',[]),1):
+        entry['message_id']='success_'+str(i)
+    return result
+
+
+def referenced_entry(history,reference):
+    candidates=[e for i,e in enumerate(history.get('recent_successes',[]),1)
+                if reference in {e['message_id'],'success_'+str(i)}]
+    if not reference or len(candidates)!=1:raise OutputIdentityError('$.reference_message_id','identify one successful stored specification; clarify a missing or ambiguous reference')
+    return candidates[0]
+
+
 def referenced_spec(history,reference):
-    prior=next((e for e in history.get('recent_successes',[]) if e['message_id']==reference),None)
-    if not reference or prior is None:raise OutputIdentityError('$.reference_message_id','identify one successful stored specification; clarify a missing or ambiguous reference')
+    prior=referenced_entry(history,reference)
     plan=(prior.get('analysis') or {}).get('plan')
     if not plan:raise OutputIdentityError('$.reference_message_id','this saved result has no stable typed output identities; use a standalone specification')
     index_outputs(plan['outputs'])
@@ -30,8 +44,8 @@ def resolve_outputs(value,history=None):
 
     Supplied standalone ids are retained as registered legacy/local ids; omitted
     ids are allocated by the system. Once registered, spelling has no semantics.
-    A compatibility rename needs an existing-id change-path anchor and exactly
-    one unbound output on each side. Multi-output renames use explicit references.
+    A single-output baseline has one structural owner, regardless of draft name.
+    Multi-output renames still need explicit references or a unique change anchor.
     """
     result=copy.deepcopy(value)
     if not isinstance(result,dict) or result.get('context_action')=='clarify' or not isinstance(result.get('analysis_plan'),dict):return result
@@ -45,6 +59,8 @@ def resolve_outputs(value,history=None):
             if out.get('id') is None:out['id']='output_'+uuid.uuid4().hex
         index_outputs(outputs)
         return result
+    if history is not None:
+        result['reference_message_id']=referenced_entry(history,result.get('reference_message_id'))['message_id']
     prior=referenced_spec(history,result.get('reference_message_id')) if history is not None else None
     if prior is None:
         # Schema/repair snapshots lack project state. Consume explicit references,
@@ -62,7 +78,6 @@ def resolve_outputs(value,history=None):
         if target not in existing:raise OutputIdentityError('$.analysis_plan.outputs.reference_output_id','unknown stored output reference '+str(target))
         if target in assigned:raise OutputIdentityError('$.analysis_plan.outputs','multiple drafts reference the same stored output')
         if draft in existing and draft!=target:raise OutputIdentityError('$.analysis_plan.outputs','crossed output id and reference_output_id declarations')
-        if out.get('kind')!=existing[target]['kind']:raise OutputIdentityError('$.analysis_plan.outputs','an output reference cannot change operation kind')
         if draft and draft!=target:
             if draft in aliases:raise OutputIdentityError('$.analysis_plan.outputs','ambiguous draft output alias')
             aliases[draft]=target
@@ -76,7 +91,7 @@ def resolve_outputs(value,history=None):
         else:pending.append(out)
     unbound=set(existing)-assigned
     if pending:
-        targets=unbound & anchors
+        targets=unbound if len(existing)==len(outputs)==1 else unbound & anchors
         if len(pending)!=1 or len(unbound)!=1 or len(targets)!=1:
             raise OutputIdentityError('$.analysis_plan.outputs','cannot prove a unique output mapping; use reference_output_id for each existing output. Adding/removing outputs is unsupported in a follow-up')
         bind(pending[0],next(iter(targets)))

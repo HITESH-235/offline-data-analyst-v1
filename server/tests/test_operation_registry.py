@@ -263,17 +263,15 @@ class RegistryTest(unittest.TestCase):
    response,failed,*_=self.send(seed['question'],'northwind.db::Orders',seed['plan'])
   self.assertFalse(failed,response);self.assertEqual(response['id'],seed['message_id'])
   return response
- def test_captured_renamed_followup_rejected_and_corrected_fixture_reopens(self):
+ def test_captured_single_output_rename_binds_and_schema_repair_reopens(self):
   seed=self.seed_captured_monthly_context()
   bad,good=[copy.deepcopy(d['output']) for d in MISPLACED['diagnostics']]
-  original,failed,*_=self.send(MISPLACED['question'],'northwind.db::Orders',bad,planner_replies=[good])
-  self.assertTrue(failed);self.assertIn('output identities',original['content'])
-  # Constructed correction: the original capture renamed an unchanged output.
-  # Retain the successful identity; this fixture is not a fresh live response.
-  for draft in (bad,good):draft['analysis_plan']['outputs'][0]['id']=seed['analysis_plan']['outputs'][0]['id']
+  # A single stored output has one owner even when the planner changes its label.
+  # Keep the captured drafts unchanged; the system must retain that identity.
   with self.assertRaisesRegex(ValueError,'chart_scope'):validate_plan(bad)
   result,failed,provider,agent,saved=self.send(MISPLACED['question'],'northwind.db::Orders',bad,planner_replies=[good])
   self.assertFalse(failed,result);self.assertEqual(provider.call_count,2);agent.assert_not_called()
+  self.assertEqual(result['analysis_plan']['outputs'][0]['id'],seed['analysis_plan']['outputs'][0]['id'])
   self.assertEqual(result['analysis_status'],'complete');self.assertIsNotNone(saved)
   self.assertEqual(result['results']['row_count'],4)
   self.assertEqual([d['accepted'] for d in result['planner_diagnostics']],[False,True])
@@ -295,6 +293,9 @@ class RegistryTest(unittest.TestCase):
   for variant in ['years','filters','formula','unit','source','join','table_scope','chart_type','chart_scope','conflicting_compare','conflicting_filters','conflicting_chart_scope','unknown_relocation']:
    with self.subTest(variant=variant):
     bad,good=copy.deepcopy(original),copy.deepcopy(repaired)
+    # Bind the intended stored output so these variants reach semantic repair
+    # rather than stopping at the independent ambiguous-identity safeguard.
+    for draft in (bad,good):draft['analysis_plan']['outputs'][0]['id']=seed['analysis_plan']['outputs'][0]['id']
     before=bad['analysis_plan']['outputs'][0]['parameters'];after=good['analysis_plan']['outputs'][0]['parameters']
     if variant=='years':after['years']=[2022]
     elif variant=='filters':before['metric']['filters']=[predicate]

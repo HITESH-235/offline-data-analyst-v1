@@ -97,7 +97,7 @@ class FollowupTest(unittest.TestCase):
     self.assertEqual(saved['analysis_context'],{'version':1,'plan':response['analysis_plan']})
     self.assertEqual(saved['results']['analysis_context'],state)
     self.assertEqual(saved['context_resolution']['reference_message_id'],third['id'])
-    self.assertEqual(saved['context_resolution']['updated_fields'],['grain'])
+    self.assertEqual(saved['context_resolution']['updated_fields'],['outputs.calendar.parameters.grain'])
     self.assertEqual(load_context(self.db,'p')['recent_successes'][0]['analysis'],saved['analysis_context'])
  def test_result_context_is_authoritative_and_grouping_edits_are_narrow(self):
   comparison=copy.deepcopy(STATE);comparison.update(years=[2021,2022],compare=True,grain='quarter')

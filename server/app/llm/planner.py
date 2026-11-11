@@ -35,7 +35,9 @@ class QueryPlanner:
             sample_rows=sample_rows,
             user_query=user_query
         )
-        prompt += '\nProject-local history: recent_successes are verified calculations; unresolved_request is unfulfilled intent, never a verified result. No raw result rows are included.\n' + json.dumps(analysis_context or {'recent_successes':[]})
+        from app.services.output_identity import planner_history
+        history_text = json.dumps(planner_history(analysis_context or {'recent_successes':[]}))
+        prompt += '\nProject-local history: recent_successes are verified calculations; unresolved_request is unfulfilled intent, never a verified result. No raw result rows are included.\n' + history_text
         from app.services.metadata_service import MetadataService
         catalog=MetadataService.get_catalog_index()
         prompt += ('\nAUTHORITATIVE SOURCE CATALOG: active dataset ID is '+str(profile.get('dataset_id'))

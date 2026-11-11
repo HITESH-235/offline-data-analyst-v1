@@ -1,0 +1,90 @@
+[
+  {
+    "attempt": 1,
+    "accepted": false,
+    "error": "$.chart_scope: Extra inputs are not permitted",
+    "output": {
+      "intent": "SIMPLE",
+      "context_action": "standalone",
+      "reference_message_id": null,
+      "chart_scope": {
+        "preference": "disabled",
+        "top_n": 10
+      },
+      "presentation": null,
+      "changed_fields": null,
+      "clarification": null,
+      "unsupported_reason": null,
+      "reasoning": "Standalone request for the mean of product_weight_g across products with usable (non-null) weights in olist.db::products, in grams, with no chart.",
+      "analysis_plan": {
+        "source": {
+          "tables": [
+            "olist.db::products"
+          ],
+          "join_keys": null
+        },
+        "outputs": [
+          {
+            "id": "product_weight_mean",
+            "kind": "statistics",
+            "parameters": {
+              "columns": [
+                "product_weight_g"
+              ],
+              "statistics": [
+                "mean"
+              ],
+              "return_table": false,
+              "unit": "g"
+            },
+            "source": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "attempt": 2,
+    "accepted": false,
+    "error": "$.chart_scope: schema repair changed a requested calculation field; clarify instead",
+    "output": {
+      "intent": "SIMPLE",
+      "context_action": "standalone",
+      "reference_message_id": null,
+      "changed_fields": null,
+      "clarification": null,
+      "unsupported_reason": null,
+      "reasoning": "Standalone request for the mean of product_weight_g across products with usable (non-null) weights in olist.db::products, in grams, with no chart.",
+      "analysis_plan": {
+        "source": {
+          "tables": [
+            "olist.db::products"
+          ],
+          "join_keys": null
+        },
+        "outputs": [
+          {
+            "id": "product_weight_mean",
+            "kind": "statistics",
+            "parameters": {
+              "columns": [
+                "product_weight_g"
+              ],
+              "statistics": [
+                "mean"
+              ],
+              "return_table": false,
+              "unit": "g"
+            },
+            "source": null
+          }
+        ],
+        "chart_scope": {
+          "preference": "disabled",
+          "top_n": 10
+        },
+        "presentation": null
+      }
+    }
+  }
+]

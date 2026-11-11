@@ -560,7 +560,11 @@ def validate_plan(value,history=None):
         from app.services.change_paths import permissions
         # Schema ownership first; baseline-dependent bounds and unchanged fields
         # are checked inside QueryPlanner's existing validation/repair attempt.
-        plan['changed_fields']=permissions(ap,plan.get('changed_fields',[]),check_indices=False)
+        prior=None
+        if plan.get('context_action')=='inherit' and history is not None:
+            from app.services.output_identity import referenced_spec
+            prior=referenced_spec(history,plan.get('reference_message_id'))
+        plan['changed_fields']=permissions(ap,plan.get('changed_fields',[]),prior,check_indices=False)
 
     if plan.get('request_requirements'):
         from app.services.analysis_package import validate_requirements
@@ -607,7 +611,9 @@ def planner_instructions():
     from app.services.change_paths import instructions as change_path_instructions
     return change_path_instructions()+'\n'+'''You plan analyses for an offline data analyst. Return JSON only.
 Use intent SIMPLE for supported registry operations, COMPLEX only for custom Python, CONVERSATION for non-calculation discussion.
-Always explicitly decide context_action: standalone, inherit, or clarify. Explicit named sources/metrics override unrelated history. A demonstrative word alone does not make a request a follow-up.
+Decide context_action BEFORE designing the calculation: standalone, inherit, or clarify.
+Use inherit when the request depends on a previous result to identify its population, metric, source or preferences. References such as "their", "those same orders" or "repeat that" must bind to one relevant successful specification; clarify if the referent is ambiguous. A new metric or operation does NOT make a referenced population standalone. For example, after counting delivered orders purchased in 2018, "now calculate their late-delivery percentage" inherits BOTH the delivered filter and 2018 purchase boundaries, even though aggregation becomes comparison_summary. Map those predicates into the new operation's population filter field (for comparison_summary, eligibility_filters), and preserve unrelated preferences. Declare kind AND whole parameters change paths for an operation replacement.
+Use standalone for a self-contained request specifying its own population, source and calculation without depending on a previous result. Do not copy historical filters, years, sources or preferences into it. Merely saying "now" or naming a different metric does not decide context; determine whether the population or other requested scope still refers back. An explicit new scope replaces only the referenced constraints it actually changes. A failed request is not a successful baseline. Never choose standalone to evade follow-up validation or an operation change; clarify an unsupported transition instead.
 Return one complete analysis_plan for SIMPLE requests. COMPLEX custom Python requests may declare request_requirements for verification of their requested outputs; they must not provide a deterministic plan. SIMPLE requests must not return request_requirements, resolved_analysis, resolved_query, operation, or completion_contract. You alone resolve language into the specification. Verification proves execution of that specification, not independent understanding of English. Preserve uncertain intent as clarification or unsupported, never a reduced approximation. Optional nulls are accepted only where the schema explicitly gives null the default meaning.
 For supported analyses return analysis_plan with source and outputs; each output has id, kind and parameters. These SAME typed parameters execute and prove completion. Do not separately invent completion_contract or resolved_analysis when using analysis_plan.
 Use exact catalog table IDs and declared join keys. Each output may override source for separate populations. Do not join different SQLite databases; return unsupported_reason explaining that constraint with no invented mapping/count.

@@ -64,6 +64,14 @@ def project_ownership(value):
     plan = result.get('analysis_plan') if isinstance(result, dict) else None
     if not isinstance(plan, dict) or not isinstance(plan.get('outputs'), list):
         return result
+    # These presentation fields have exactly one schema owner. Relocation is a
+    # representation repair; conflicting copies must still reject.
+    for name in ('chart_scope','presentation'):
+        if name in result:
+            if result[name] is None:
+                result.pop(name)
+            else:
+                _move(result,plan,AnalysisPlan,name,'$','$.analysis_plan')
     for i, output in enumerate(plan['outputs']):
         if not isinstance(output, dict):
             continue
