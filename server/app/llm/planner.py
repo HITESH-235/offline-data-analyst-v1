@@ -40,24 +40,32 @@ class QueryPlanner:
         prompt += '\nProject-local history: recent_successes are verified calculations; unresolved_request is unfulfilled intent, never a verified result. No raw result rows are included.\n' + history_text
         from app.services.metadata_service import MetadataService
         catalog=MetadataService.get_catalog_index()
+        catalog_text = json.dumps({'tables':{name:{'columns':info.get('columns',[])} for name,info in catalog.get('tables',{}).items()},
+                                   'relationships':catalog.get('relationships',[])})
         prompt += ('\nAUTHORITATIVE SOURCE CATALOG: active dataset ID is '+str(profile.get('dataset_id'))
                    +'. Source tables and join endpoints MUST use exact IDs below. database.db in the schema example is illustrative, never a real database. '
                    'Use actual column names from these tables. If the intended source is uncertain, ask for clarification.\n'
-                   +json.dumps({'tables':{name:{'columns':info.get('columns',[])} for name,info in catalog.get('tables',{}).items()},
-                                'relationships':catalog.get('relationships',[])}))
+                   +catalog_text)
         
         logger.info(f"Classifying query intent: '{user_query}'")
         
         from app.analysis.operations import validate_plan, planner_instructions, sanitize, ContractError
         diagnostics=diagnostics if diagnostics is not None else []
         system=PLANNER_CONTRACT
+        base_prompt_length = len(prompt)
         original=None;original_error_path=None
         for attempt in range(2):
             # Transport/auth errors are not schema failures and must never cause another call.
             decoded=None
-            from app.services.request_control import report_progress
+            from app.services.request_control import report_progress, model_metadata
             report_progress("repairing_plan" if attempt else "planning")
-            raw_response=OllamaClient.call_model(prompt=prompt,system_prompt=system,json_format=True)
+            with model_metadata(purpose='schema_repair' if attempt else 'planning',
+                                prompt_sections_characters={'system_contract':len(system),
+                                    'dataset_schema':len(schema_desc), 'history':len(history_text),
+                                    'catalog':len(catalog_text), 'question':len(user_query),
+                                    'repair_addition':len(prompt)-base_prompt_length,
+                                    'user_prompt_total':len(prompt)}):
+                raw_response=OllamaClient.call_model(prompt=prompt,system_prompt=system,json_format=True)
             try:
                 try:decoded=json.loads(raw_response)
                 except (json.JSONDecodeError,TypeError) as error:raise ContractError('$','invalid JSON: '+str(error)) from None

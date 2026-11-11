@@ -5,7 +5,8 @@ import logging
 import http.client
 import socket
 from contextlib import contextmanager, ExitStack
-from app.services.request_control import current_request
+from app.services.request_control import current_request, current_model_metadata, model_metadata
+from app.llm.usage import report_usage
 from typing import Dict, Any, Optional, List
 from app.core.config import settings
 
@@ -75,8 +76,11 @@ class OllamaClient:
         )
         
         try:
-            with provider_response(req, timeout=600) as response:
+            with model_metadata(provider='ollama', model=settings.OLLAMA_MODEL,
+                                purpose=(current_model_metadata.get() or {}).get('purpose', 'generation'),
+                                input_characters=len(prompt) + len(system_prompt or '')), provider_response(req, timeout=600) as response:
                 resp_data = json.loads(response.read().decode("utf-8"))
+                report_usage('ollama', resp_data)
                 return resp_data.get("response", "")
         except urllib.error.URLError as e:
             logger.error(f"Failed to connect to local Ollama server at {settings.OLLAMA_BASE_URL}: {e}")
@@ -117,8 +121,11 @@ class OllamaClient:
         )
 
         try:
-            with provider_response(req, timeout=600) as response:
+            with model_metadata(provider='ollama', model=settings.OLLAMA_MODEL,
+                                purpose=(current_model_metadata.get() or {}).get('purpose', 'agent_chat'),
+                                input_characters=sum(len(m.get('content', '')) for m in messages)), provider_response(req, timeout=600) as response:
                 resp_data = json.loads(response.read().decode("utf-8"))
+                report_usage('ollama', resp_data)
                 # /api/chat returns {"message": {"role": "assistant", "content": "..."}}
                 return resp_data.get("message", {}).get("content", "")
         except urllib.error.URLError as e:
