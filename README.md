@@ -1,15 +1,17 @@
 <div align="center">
 
-<h1 id="offline-ai-data-analyst"><img src="client/public/favicon.svg" alt="" width="36" height="36" align="absmiddle" /> Offline AI Data Analyst</h1>
+<img src="client/public/favicon.svg" alt="Offline AI Data Analyst icon" width="64" />
 
-### Local intelligence. Inspectable analytics.
+# Offline AI Data Analyst
 
-Natural-language analysis powered by <strong>Qwen2.5-Coder 7B running on your own machine.</strong><br />
-Ask questions, inspect calculations, explore charts, and return to saved results.
+### Ask the question. Inspect the calculation.
 
-**Local 7B-class inference · No hosted model API required · Offline-ready charts · Your workspace**
+A local analytics workspace that brings natural-language questions, inspectable calculations,<br />
+interactive charts, and saved results into one place.
 
-[Workspace tour](#a-tour-of-the-workspace) · [Chart gallery](#six-chart-types-one-workspace) · [The engine](#how-an-answer-is-built) · [Run locally](#run-locally) · [Try a question](#questions-to-try)
+**Local inference · Typed analysis plans · Interactive Plotly · Persistent workspaces**
+
+[See the workspace](#a-tour-of-the-workspace) · [Explore the engine](#how-an-answer-is-built) · [Run locally](#run-locally) · [Try a question](#questions-to-try) · [Understand the limits](#current-boundaries)
 
 </div>
 
@@ -17,15 +19,12 @@ Ask questions, inspect calculations, explore charts, and return to saved results
 
 <p align="center"><em>One workspace: browse data on the left, inspect the result in the center, and follow the explanation on the right.</em></p>
 
-**Built around a local model, from planning to analysis.** The committed application uses **Qwen2.5-Coder 7B** through **Ollama** for language interpretation, with deterministic Python operations doing the supported calculations. No hosted inference API or paid model service is required. Once dependencies, model weights, and required extensions are installed, the local workflow can run without an internet connection.
-
-The engineering challenge is making a **7B-class model useful as an analyst**: give it a typed planning contract, validate its declared calculation, execute through a shared coordinator, and keep the evidence attached to the result. Local execution is the project's foundation; the screenshot tour below shows that workflow in action.
+**V1 is a local research and development application.** There is no hosted demo; the screenshots below provide a guided walkthrough, and the repository includes instructions for running it on your own machine. The committed inference path uses Ollama with Qwen 2.5 Coder 7B, without an API key.
 
 ## What makes it interesting
 
 | Capability | What it means in practice |
 | --- | --- |
-| **A local 7B-class model at the center** | Qwen2.5-Coder 7B handles language interpretation through Ollama; supported arithmetic runs in deterministic operations. No cloud model is required. |
 | **An inspectable calculation behind the answer** | Supported requests become typed operations with explicit sources, filters, formulas, grouping, units, and output scope. |
 | **Chat for findings, workspace for detail** | Small numerical answers stay in chat. Richer results open into tables and compatible charts, with calculation details available in both places. |
 | **Charts bound to calculated results** | Result charts use the same structured table. A chart's Top N can show five products while the table retains all 77. |
@@ -97,31 +96,19 @@ For delivery comparisons, this includes calendar-date semantics, the matched/com
 
 Saved results are snapshots. Reopening one displays its stored output; it does not silently rerun the model or refresh calculations against changed data.
 
-## Six chart types, one workspace
+<details>
+<summary><strong>More of the workspace: correlation heatmaps</strong></summary>
 
-All six native result-chart types are gathered here. Each picture is a **chart-panel screenshot from the app**; click it for the full-size image. The renderer runs locally, with no chart CDN or extra model call.
+Pearson and Spearman correlation are supported. The example below compares item price and freight, with the coefficient explained in chat and the matrix available as a heatmap. Undefined coefficients remain null; association is not presented as causation.
 
-<table>
-  <tr>
-    <td valign="top" width="50%" align="center"><strong>Bar · Compare rankings</strong><br /><a href="docs/images/chart-bar.png"><img src="docs/images/chart-bar.png" alt="Orange horizontal bar chart ranking the five leading Northwind products by quantity sold" /></a><br /><sub>Ranked product totals; chart Top N leaves the full table intact.</sub></td>
-    <td valign="top" width="50%" align="center"><strong>Line · Follow a trend</strong><br /><a href="docs/images/chart-line.png"><img src="docs/images/chart-line.png" alt="Quarterly 2021 Net Sales line chart in dark mode" /></a><br /><sub>Calendar periods in chronological order.</sub></td>
-  </tr>
-  <tr>
-    <td valign="top" align="center"><strong>Scatter · Explore relationships</strong><br /><a href="docs/images/chart-scatter.png"><img src="docs/images/chart-scatter.png" alt="Scatter plot of expected goals against recorded goals for individual football players" /></a><br /><sub>Two numeric measures across individual observations.</sub></td>
-    <td valign="top" align="center"><strong>Histogram · See the distribution</strong><br /><a href="docs/images/chart-histogram.png"><img src="docs/images/chart-histogram.png" alt="Histogram showing the distribution of football player ratings" /></a><br /><sub>Frequency bins calculated from raw numeric observations.</sub></td>
-  </tr>
-  <tr>
-    <td valign="top" align="center"><strong>Box · Compare spread</strong><br /><a href="docs/images/chart-box.png"><img src="docs/images/chart-box.png" alt="Box plots of player ratings for forwards, midfielders and defenders" /></a><br /><sub>Medians, quartiles, whiskers, and supported outlier markers.</sub></td>
-    <td valign="top" align="center"><strong>Heatmap · Read a matrix</strong><br /><a href="docs/images/chart-heatmap.png"><img src="docs/images/chart-heatmap.png" alt="Price and freight correlation heatmap with annotated coefficients" /></a><br /><sub>Pearson or Spearman correlation; undefined coefficients stay null.</sub></td>
-  </tr>
-</table>
+![Dark-mode price-versus-freight correlation heatmap with a summary and interpretation note in chat](docs/images/correlation.png)
 
-Chart choices follow the result's structure: distributions and box plots require individual observations, and a correlation matrix supplies the heatmap. Correlation and rankings describe association, not causation. Captured Python figures have a separate artifact viewer; they are not additional native result-chart operations.
+</details>
 
 <details>
 <summary><strong>About these screenshots</strong></summary>
 
-Workspace screenshots were captured from the actual local React application in isolated Chrome at **1600 × 1000**, with a device scale factor of 1 and no application scaling. Gallery pictures capture the chart panels at the same scale. The gallery uses verified saved results and a native filtering execution over the bundled football dataset, excluding goalkeepers so each displayed position has repeated observations. Northwind previews/profiles come from the existing catalog. Capture sessions made no live model calls and did not modify existing user projects or history.
+Captured from the actual local React application in isolated Chrome at **1600 × 1000**, with a device scale factor of 1 and no application scaling. They replay existing verified result packages and read actual cached Northwind previews/profiles. The screenshot session made no live model calls and did not modify existing user projects or history.
 
 Project names are demonstration labels. Response times shown during replay are not inference benchmarks. Some screenshots include the optional Olist catalog, which is not bundled with the repository.
 
@@ -131,12 +118,29 @@ Project names are demonstration labels. Response times shown during replay are n
 
 ```mermaid
 flowchart LR
-    Q[Question + state] --> P[Local Qwen planner]
-    P --> C[Validate + calculate]
-    C --> R[Verify + present + save]
+    subgraph resolve["1 · Resolve intent"]
+        direction TB
+        Q["Question + successful context"] --> P["Local planner<br/>One typed specification"]
+    end
+    subgraph validate["2 · Validate the specification"]
+        direction TB
+        V["Sources · types · formulas"] --> G["Relationships · grain<br/>Declared context changes"]
+    end
+    subgraph execute["3 · Execute deterministically"]
+        direction TB
+        C["Shared typed coordinator"] --> E["Calculation + provenance<br/>Execution evidence"]
+    end
+    subgraph publish["4 · Publish and remember"]
+        direction TB
+        K["Completion + publication checks"] --> R["Verified result package"]
+        R --> O["Chat · tables · charts<br/>Saved output + canonical context"]
+    end
+    resolve --> validate --> execute --> publish
 ```
 
-**Qwen2.5-Coder 7B interprets the question; the deterministic engine performs the supported arithmetic.** Validation resolves sources, relationships, and declared context changes; publication binds verified tables to chat, charts, and saved context. Unclear or unsupported requests can clarify or return an explicit incomplete outcome. A shared operation registry defines parameter ownership, output identities, and execution requirements. Planning has one existing bounded schema-repair opportunity within the shared request deadline.
+Unclear or unsupported specifications return clarification or an explicit incomplete outcome. The shared deadline and cancellation/publication guards apply across the flow.
+
+The model interprets the question; the supported deterministic route performs the arithmetic. A shared operation registry defines parameter ownership, output identities, and execution requirements. Planning has one existing bounded schema-repair opportunity within the shared request deadline.
 
 **What verification establishes:** the declared, supported calculation was executed and its output satisfies the generated contract. It does **not** independently prove that arbitrary English was interpreted correctly. Semantic regressions are evaluated with expected specifications and independent SQLite answers.
 
@@ -294,7 +298,7 @@ This tests a meaningful distinction: averaging every review row can overweight o
 | Interface | React 19, Vite, Lucide icons, Markdown rendering, CSS theme tokens. |
 | API and persistence | FastAPI, Pydantic typed contracts, SQLAlchemy, SQLite. |
 | Analysis | Pandas, NumPy, DuckDB profiling, reusable deterministic operations. |
-| Inference | Local **Qwen2.5-Coder 7B** through Ollama (`qwen2.5-coder:7b`). |
+| Inference | Ollama; default model `qwen2.5-coder:7b`. |
 | Charts | Bundled Plotly.js for result views; Python chart/artifact support. |
 | Additional execution | AST-checked, resource-bounded Python subprocesses. |
 | Reporting API | Markdown/PDF report generation; not a report-building screen in the current UI. |
@@ -347,7 +351,7 @@ Some backend integration/replay tests depend on the optional Olist import and lo
 
 ## Current boundaries
 
-- **Designed for a personal local workspace.** The included stack is a development setup with local storage, permissive CORS, and no application authentication. Exposing it as a shared public service would require authentication, deployment hardening, and separate infrastructure.
+- **Local development, not public hosting.** The default stack uses development servers, local storage, permissive CORS, and no application authentication. Public deployment needs separate hardening and infrastructure work.
 - **Bounded analytics.** Unsupported operations, invalid relationships, ambiguous references, and unsupported compositions can clarify or fail. Cross-database joins are not supported. Adding or removing outputs within an existing follow-up remains unsupported.
 - **A model can misunderstand.** Typed validation checks structure, declared changes, and executable semantics. It cannot guarantee that the specification matches every detail of a natural-language request. Inspect the resolved calculation for important decisions.
 - **Memory-bound execution.** Analysis loads source data into Pandas; this is not an out-of-core or distributed analytics engine. Large datasets and joins require sufficient RAM. No general maximum dataset size is claimed.
