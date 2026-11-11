@@ -22,7 +22,7 @@ function ChatProgress({ message }) {
   return (
     <div className="chat-progress" data-stage={stage} data-pending={pending} aria-busy={pending}>
       <StatusIcon size={14} aria-hidden="true" />
-      <span role="status" title={message.datasetName}>{STAGES[stage] ?? 'Working'}{message.datasetName ? ` · ${message.datasetName}` : ''}</span>
+      <span role="status" title={message.datasetSource || message.datasetName}>{STAGES[stage] ?? 'Working'}{message.datasetName ? ` · ${message.datasetName}` : ''}</span>
       {Number.isFinite(elapsed) && <span className="elapsed">{(elapsed / 1000).toFixed(1)} s</span>}
     </div>
   );
@@ -191,7 +191,10 @@ export const ChatPanel = ({ datasetName, onOpenResult }) => {
                   }}
                 >
                   <div className="message-author">{isUser ? "You" : "Analyst"}{showPast && msg.created_at && <time className="past-message-time" dateTime={msg.created_at}>{new Date(msg.created_at).toLocaleString()}</time>}</div>
-                  {!isUser && progressState({ ...msg, metadata: meta }).stage && <ChatProgress message={{ ...msg, metadata: meta }} />}
+                  {!isUser && progressState({ ...msg, metadata: meta }).stage && <ChatProgress message={{ ...msg, metadata: meta,
+                    datasetName: tables.length ? tables.map(source => source.split('::').at(-1)).join(' + ') : msg.datasetName,
+                    datasetSource: tables.join(' · '),
+                  }} />}
 
                   {/* Message body text with Markdown formatting */}
                   <div className="markdown-content">

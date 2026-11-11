@@ -227,7 +227,7 @@ function App() {
           title="Drag to resize AI chat panel"
         />
         <section className="right-panel" style={{ height: "100%" }}>
-          <ChatPanel datasetName={activeDataset?.filename} onOpenResult={openResult} />
+          <ChatPanel datasetName={activeDataset?.filename || activeDatasetId} onOpenResult={openResult} />
         </section>
       </div>
     </div>
