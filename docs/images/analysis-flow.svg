@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="580" viewBox="0 0 1200 580" role="img" aria-labelledby="title description">
+<title id="title">From question to verified analytical result</title>
+<desc id="description">Eight numbered stages connect a question and prior successful context to local planning, a typed specification, source and context validation, deterministic execution, execution evidence, publication checks and a verified result package. The package branches to chat, the result workspace and saved output with canonical context. Separate paths show one bounded schema repair, clarification or incomplete outcomes, and reuse of successful context in later follow-ups. Shared deadlines, cancellation and publication fencing apply throughout.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 9 5 1 9" fill="none" stroke="#409CFF" stroke-width="1.6" stroke-linejoin="miter"/></marker>
+  <marker id="warning-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 9 5 1 9" fill="none" stroke="#FF9B45" stroke-width="1.6"/></marker>
+  <style>
+    text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#F5F7FA}
+    .title{font-size:19px;font-weight:700;letter-spacing:1px}
+    .eyebrow{font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:1.4px;fill:#A9B6C8}
+    .number{font-family:ui-monospace,Consolas,monospace;font-size:11px;font-weight:700;fill:#409CFF}
+    .node-title{font-size:15px;font-weight:650}
+    .detail{font-size:12px;fill:#A9B6C8}
+    .label{font-family:ui-monospace,Consolas,monospace;font-size:10px;fill:#A9B6C8}
+    .route{fill:none;stroke:#409CFF;stroke-width:1.7;marker-end:url(#arrow)}
+    .conditional{fill:none;stroke:#FF9B45;stroke-width:1.4;stroke-dasharray:5 4;marker-end:url(#warning-arrow)}
+    .feedback{fill:none;stroke:#52759C;stroke-width:1.3;stroke-dasharray:4 5;marker-end:url(#arrow)}
+  </style>
+</defs>
+<path d="M10 0H1190L1200 10V570L1190 580H10L0 570V10Z" fill="#080B10"/>
+<path d="M24 63H1176" stroke="#26364A"/>
+<path d="M32 26H54" stroke="#409CFF" stroke-width="3"/>
+<text x="65" y="33" class="title">FROM QUESTION TO EVIDENCE</text>
+<text x="1168" y="32" text-anchor="end" class="eyebrow">LOCAL PLANNING / DETERMINISTIC ANALYSIS</text>
+<text x="32" y="88" class="eyebrow">INTERPRET + RESOLVE</text>
+<text x="32" y="258" class="eyebrow">EXECUTE + ESTABLISH COMPLETION</text>
+<!-- Orthogonal main path, numbered across two rows. -->
+<path class="route" d="M288 153H332"/>
+<path class="route" d="M576 153H620"/>
+<path class="route" d="M864 153H908"/>
+<path class="route" d="M1040 198V274"/>
+<text x="1053" y="240" class="label">validated</text>
+<path class="route" d="M912 324H868"/>
+<path class="route" d="M624 324H580"/>
+<path class="route" d="M336 324H292"/>
+<!-- Single schema correction, inside the existing budget. -->
+<path class="feedback" d="M1040 108V78H456V104"/>
+<path d="M652 70H874V85H652Z" fill="#080B10"/>
+<text x="763" y="81" text-anchor="middle" class="label">schema issue / at most one repair</text>
+<!-- Explicit exits, never a closest-result fallback. -->
+<path class="conditional" d="M1168 153H1184V472H1172"/>
+<path class="conditional" d="M456 370V396H1040V430"/>
+<path d="M668 387H927V403H668Z" fill="#080B10"/>
+<text x="798" y="398" text-anchor="middle" class="label">missing evidence / incomplete</text>
+<!-- One verified package feeds all three consumers. -->
+<path d="M160 370V414H744" fill="none" stroke="#409CFF" stroke-width="1.7"/>
+<path class="route" d="M160 414V430"/>
+<path class="route" d="M456 414V430"/>
+<path class="route" d="M744 414V430"/>
+<circle cx="160" cy="414" r="3" fill="#409CFF"/>
+<circle cx="456" cy="414" r="3" fill="#409CFF"/>
+<circle cx="744" cy="414" r="3" fill="#409CFF"/>
+<!-- Only successful canonical context is reused. -->
+<path class="feedback" d="M744 508V539H16V153H28"/>
+<path d="M206 530H610V546H206Z" fill="#080B10"/>
+<text x="408" y="541" text-anchor="middle" class="eyebrow">SUCCESSFUL SPECIFICATION / NEXT FOLLOW-UP</text>
+
+<g transform="translate(32 108)">
+<path d="M0 0H246L256 10V90H10L0 80Z" fill="#0D141E" stroke="#2B3C52"/>
+<path d="M0 0H34" stroke="#409CFF" stroke-width="2"/>
+<text x="16" y="23" class="number">01</text>
+<text x="45" y="24" class="node-title">Request + context</text>
+<text x="16" y="48" class="detail">Current question</text>
+<text x="16" y="65" class="detail">Referenced successful specification</text>
+</g>
+<g transform="translate(336 108)">
+<path d="M0 0H230L240 10V90H10L0 80Z" fill="#0D141E" stroke="#2B3C52"/>
+<path d="M0 0H34" stroke="#409CFF" stroke-width="2"/>
+<text x="16" y="23" class="number">02</text>
+<text x="45" y="24" class="node-title">Local planner</text>
+<text x="16" y="48" class="detail">Qwen2.5-Coder 7B via Ollama</text>
+<text x="16" y="65" class="detail">Explicit intent + context changes</text>
+</g>
+<g transform="translate(624 108)">
+<path d="M0 0H230L240 10V90H10L0 80Z" fill="#0D141E" stroke="#2B3C52"/>
+<path d="M0 0H34" stroke="#409CFF" stroke-width="2"/>
+<text x="16" y="23" class="number">03</text>
+<text x="45" y="24" class="node-title">Typed specification</text>
+<text x="16" y="48" class="detail">Sources · filters · formulas</text>
+<text x="16" y="65" class="detail">Grouping · units · result scope</text>
+</g>
+<g transform="translate(912 108)">
+<path d="M0 0H246L256 10V90H10L0 80Z" fill="#0D141E" stroke="#2B3C52"/>
+<path d="M0 0H34" stroke="#409CFF" stroke-width="2"/>
+<text x="16" y="23" class="number">04</text>
+<text x="45" y="24" class="node-title">Structural validation</text>
+<text x="16" y="48" class="detail">Schema · relationships · grain</text>
+<text x="16" y="65" class="detail">Declared follow-up changes</text>
+</g>
+<g transform="translate(912 278)">
+<path d="M0 0H246L256 10V92H10L0 82Z" fill="#0D141E" stroke="#2B3C52"/>
+<path d="M0 0H34" stroke="#409CFF" stroke-width="2"/>
+<text x="16" y="23" class="number">05</text>
+<text x="45" y="24" class="node-title">Typed coordinator</text>
+<text x="16" y="48" class="detail">Load · filter · calculate</text>
+<text x="16" y="65" class="detail">Supported deterministic operations</text>
+</g>
+<g transform="translate(624 278)">
+<path d="M0 0H230L240 10V92H10L0 82Z" fill="#0D141E" stroke="#2B3C52"/>
+<path d="M0 0H34" stroke="#409CFF" stroke-width="2"/>
+<text x="16" y="23" class="number">06</text>
+<text x="45" y="24" class="node-title">Execution evidence</text>
+<text x="16" y="48" class="detail">Output identities + provenance</text>
+<text x="16" y="65" class="detail">Contributors · exclusions · units</text>
+</g>
+<g transform="translate(336 278)">
+<path d="M0 0H230L240 10V92H10L0 82Z" fill="#0D141E" stroke="#2B3C52"/>
+<path d="M0 0H34" stroke="#409CFF" stroke-width="2"/>
+<text x="16" y="23" class="number">07</text>
+<text x="45" y="24" class="node-title">Publication gate</text>
+<text x="16" y="48" class="detail">Requirements · scope · evidence</text>
+<text x="16" y="65" class="detail">Completion decision</text>
+</g>
+<g transform="translate(32 278)">
+<path d="M0 0H246L256 10V92H10L0 82Z" fill="#0D141E" stroke="#2B3C52"/>
+<path d="M0 0H34" stroke="#409CFF" stroke-width="2"/>
+<text x="16" y="23" class="number">08</text>
+<text x="45" y="24" class="node-title">Verified result package</text>
+<text x="16" y="48" class="detail">Calculated tables + metadata</text>
+<text x="16" y="65" class="detail">One shared source for presentation</text>
+</g>
+<g transform="translate(32 434)">
+<path d="M0 0H246L256 10V74H10L0 64Z" fill="#0D141E" stroke="#2B3C52"/>
+<path d="M0 0H34" stroke="#409CFF" stroke-width="2"/>
+<text x="16" y="24" class="node-title">Side chat</text>
+<text x="16" y="46" class="detail">Findings + calculation details</text>
+</g>
+<g transform="translate(336 434)">
+<path d="M0 0H230L240 10V74H10L0 64Z" fill="#0D141E" stroke="#2B3C52"/>
+<path d="M0 0H34" stroke="#409CFF" stroke-width="2"/>
+<text x="16" y="24" class="node-title">Open result</text>
+<text x="16" y="46" class="detail">Tables + compatible charts</text>
+</g>
+<g transform="translate(624 434)">
+<path d="M0 0H230L240 10V74H10L0 64Z" fill="#0D141E" stroke="#2B3C52"/>
+<path d="M0 0H34" stroke="#409CFF" stroke-width="2"/>
+<text x="16" y="24" class="node-title">Saved output + context</text>
+<text x="16" y="46" class="detail">Reopen · restore · follow up</text>
+</g>
+<g transform="translate(912 434)">
+<path d="M0 0H246L256 10V74H10L0 64Z" fill="#17120F" stroke="#795437"/>
+<path d="M0 0H34" stroke="#FF9B45" stroke-width="2"/>
+<text x="16" y="24" class="node-title">Clarify / incomplete</text>
+<text x="16" y="46" class="detail">Unsupported, uncertain or unfinished</text>
+</g>
+<path d="M32 554H1168" stroke="#26364A"/>
+<text x="32" y="571" class="eyebrow">REQUEST GUARDS</text>
+<text x="185" y="571" class="detail">Shared deadline · bounded repair · cancellation · late-publication fencing</text>
+</svg>
