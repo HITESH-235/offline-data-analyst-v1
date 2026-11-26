@@ -19,7 +19,7 @@ Ask questions, inspect calculations, explore charts, and return to saved results
 
 **Built around a local model, from planning to analysis.** The committed application uses **Qwen2.5-Coder 7B** through **Ollama** for language interpretation, with deterministic Python operations doing the supported calculations. No hosted inference API or paid model service is required. Once dependencies, model weights, and required extensions are installed, the local workflow can run without an internet connection.
 
-The engineering challenge is making a **7B-class model useful as an analyst**: give it a typed planning contract, validate its declared calculation, execute through a shared coordinator, and keep the evidence attached to the result. Local execution is the project's foundation; the screenshot tour below shows that workflow in action.
+The engineering challenge is making a **7B-class model useful as an analyst**: give it a typed planning contract, validate its declared calculation, execute through a shared coordinator, and keep the evidence attached to the result. V1 focuses on dataset-specific analysis workflows built around known schemas and supported calculations.
 
 ## What makes it interesting
 
@@ -139,7 +139,7 @@ Custom Python and conversation remain separate routes. Python execution has its 
 
 ### Supported deterministic work
 
-| Operation family | Examples and boundaries |
+| Operation family | Supported examples |
 | --- | --- |
 | Counts and aggregates | Counts, distinct counts, sums, means, grouped measures, supported derived arithmetic, filtering, sorting, and explicit unit conversion. |
 | Calendar analysis | Month/quarter/year aggregation, complete calendar periods, and supported year-over-year comparisons. |
@@ -311,7 +311,7 @@ workspace/                 Local runtime state and generated outputs (ignored)
 docs/                      Technical notes and this README's screenshots
 ```
 
-For the main boundaries, start with [typed operations](server/app/analysis/operations.py), the [deterministic coordinator](server/app/services/planned_analysis.py), [result publication](server/app/services/analysis_package.py), and [structured follow-up validation](server/app/services/specification_context.py).
+For implementation details, start with [typed operations](server/app/analysis/operations.py), the [deterministic coordinator](server/app/services/planned_analysis.py), [result publication](server/app/services/analysis_package.py), and [structured follow-up validation](server/app/services/specification_context.py).
 
 ## Checks and verification
 
@@ -340,16 +340,16 @@ docker compose exec frontend npm run build
 
 Some backend integration/replay tests depend on the optional Olist import and local evaluation captures. A fresh clone does not include those datasets or complete evaluation directories; it cannot reproduce every workspace-dependent test without preparing those inputs.
 
-## Current boundaries
+## Operational notes
 
-- **Designed for a personal local workspace.** The included stack is a development setup with local storage, permissive CORS, and no application authentication. Exposing it as a shared public service would require authentication, deployment hardening, and separate infrastructure.
-- **Bounded analytics.** Unsupported operations, invalid relationships, ambiguous references, and unsupported compositions can clarify or fail. Cross-database joins are not supported. Adding or removing outputs within an existing follow-up remains unsupported.
-- **A model can misunderstand.** Typed validation checks structure, declared changes, and executable semantics. It cannot guarantee that the specification matches every detail of a natural-language request. Inspect the resolved calculation for important decisions.
-- **Memory-bound execution.** Analysis loads source data into Pandas; this is not an out-of-core or distributed analytics engine. Large datasets and joins require sufficient RAM. No general maximum dataset size is claimed.
-- **Bounded time, variable latency.** The shared request deadline defaults to 120 seconds, with cancellation and late-publication guards. A valid request may still time out on slow inference. Phase timings and reported token counts aid diagnosis; missing usage remains unknown.
-- **Snapshots are not versioned datasets.** Saved outputs persist, but source files are not an immutable data-versioning system. Reopening is not rerunning; changed datasets can change future calculations. Some historical records lack the typed identity needed for follow-ups and require a new standalone request.
-- **Python isolation has limits.** Generated code is AST-checked and executed in a subprocess with a 10-second timeout and an attempted 2 GiB address-space limit on supported Unix systems. This is not a dedicated container or hardened security boundary for hostile code.
-- **Offline operation needs preparation.** Images, dependencies, model weights, and relevant extensions must already be available. The committed local inference path needs no hosted API, and the result-chart renderer needs no CDN.
+- **Local deployment.** The included stack is a development setup with local storage, permissive CORS, and no application authentication. Exposing it as a shared public service would require authentication, deployment hardening, and separate infrastructure.
+- **Supported calculations.** Unsupported operations, invalid relationships, ambiguous references, and unsupported compositions can clarify or fail. Cross-database joins are not supported. Adding or removing outputs within an existing follow-up remains unsupported.
+- **Specification validation.** Typed validation checks structure, declared changes, and executable semantics. It cannot guarantee that the specification matches every detail of a natural-language request. Inspect the resolved calculation for important decisions.
+- **Data processing.** Analysis loads source data into Pandas; this is not an out-of-core or distributed analytics engine. Large datasets and joins require sufficient RAM. No general maximum dataset size is claimed.
+- **Request timing.** The shared request deadline defaults to 120 seconds, with cancellation and late-publication guards. A valid request may still time out on slow inference. Phase timings and reported token counts aid diagnosis; missing usage remains unknown.
+- **Saved results.** Saved outputs persist, but source files are not an immutable data-versioning system. Reopening is not rerunning; changed datasets can change future calculations. Some historical records lack the typed identity needed for follow-ups and require a new standalone request.
+- **Python execution.** Generated code is AST-checked and executed in a subprocess with a 10-second timeout and an attempted 2 GiB address-space limit on supported Unix systems. This is not a dedicated container or hardened security boundary for hostile code.
+- **Offline setup.** Images, dependencies, model weights, and relevant extensions must already be available. The committed local inference path needs no hosted API, and the result-chart renderer needs no CDN.
 
 ---
 
